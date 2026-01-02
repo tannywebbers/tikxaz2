@@ -1,27 +1,135 @@
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { 
-  Coins, 
   ArrowUpRight, 
   ArrowDownLeft, 
   CreditCard,
   History,
   TrendingUp,
-  Plus
+  Plus,
+  Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 
-const transactions = [
-  { id: 1, type: "earn", description: "Task completed: Like video", amount: 25, date: "2 min ago" },
-  { id: 2, type: "earn", description: "Task completed: Comment", amount: 50, date: "1 hour ago" },
-  { id: 3, type: "spend", description: "Created ad: Fashion post", amount: -500, date: "3 hours ago" },
-  { id: 4, type: "earn", description: "Task completed: Save video", amount: 35, date: "5 hours ago" },
-  { id: 5, type: "purchase", description: "Purchased TikPoints", amount: 1000, date: "1 day ago" },
-  { id: 6, type: "earn", description: "Task completed: Watch video", amount: 40, date: "1 day ago" },
-];
+interface Transaction {
+  id: string;
+  type: string;
+  description: string | null;
+  amount: number;
+  created_at: string;
+}
 
 export function WalletPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    earned: 0,
+    spent: 0,
+    purchased: 0
+  });
+
+  useEffect(() => {
+    if (user) {
+      fetchWalletData();
+    }
+  }, [user]);
+
+  const fetchWalletData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch user's balance
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("tik_points")
+        .eq("user_id", user?.id)
+        .single();
+
+      if (profileError) throw profileError;
+      setBalance(profile?.tik_points || 0);
+
+      // Fetch transactions
+      const { data: txData, error: txError } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("user_id", user?.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (txError) throw txError;
+      setTransactions(txData || []);
+
+      // Calculate monthly stats
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      const monthlyTx = (txData || []).filter(
+        tx => new Date(tx.created_at) >= startOfMonth
+      );
+
+      const earned = monthlyTx
+        .filter(tx => tx.type === "earn")
+        .reduce((sum, tx) => sum + tx.amount, 0);
+      
+      const spent = monthlyTx
+        .filter(tx => tx.type === "spend")
+        .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+      
+      const purchased = monthlyTx
+        .filter(tx => tx.type === "purchase")
+        .reduce((sum, tx) => sum + tx.amount, 0);
+
+      setStats({ earned, spent, purchased });
+    } catch (error) {
+      console.error("Error fetching wallet data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load wallet data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBuyPoints = () => {
+    toast({
+      title: "Coming Soon",
+      description: "Point purchases will be available soon!"
+    });
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    return format(date, "MMM d, yyyy");
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Balance Card */}
@@ -36,25 +144,23 @@ export function WalletPage() {
               <div>
                 <p className="text-muted-foreground mb-2">Total Balance</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold gradient-text">2,450</span>
+                  <span className="text-5xl font-bold gradient-text">{balance.toLocaleString()}</span>
                   <span className="text-xl text-muted-foreground">TikPoints</span>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="success" className="gap-1">
-                    <TrendingUp className="w-3 h-3" />
-                    +12.5% this week
-                  </Badge>
-                </div>
+                {stats.earned > 0 && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="success" className="gap-1">
+                      <TrendingUp className="w-3 h-3" />
+                      +{stats.earned} this month
+                    </Badge>
+                  </div>
+                )}
               </div>
               
               <div className="flex gap-3">
-                <Button variant="gradient" size="lg">
+                <Button variant="gradient" size="lg" onClick={handleBuyPoints}>
                   <Plus className="w-5 h-5" />
                   Buy Points
-                </Button>
-                <Button variant="outline" size="lg">
-                  <CreditCard className="w-5 h-5" />
-                  Withdraw
                 </Button>
               </div>
             </div>
@@ -77,7 +183,7 @@ export function WalletPage() {
                 </div>
                 <span className="text-muted-foreground">Earned</span>
               </div>
-              <div className="text-2xl font-bold">1,850</div>
+              <div className="text-2xl font-bold">{stats.earned.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
@@ -96,7 +202,7 @@ export function WalletPage() {
                 </div>
                 <span className="text-muted-foreground">Spent</span>
               </div>
-              <div className="text-2xl font-bold">500</div>
+              <div className="text-2xl font-bold">{stats.spent.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
@@ -115,7 +221,7 @@ export function WalletPage() {
                 </div>
                 <span className="text-muted-foreground">Purchased</span>
               </div>
-              <div className="text-2xl font-bold">1,000</div>
+              <div className="text-2xl font-bold">{stats.purchased.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">This month</p>
             </CardContent>
           </Card>
@@ -134,41 +240,47 @@ export function WalletPage() {
               <History className="w-5 h-5" />
               Transaction History
             </CardTitle>
-            <Button variant="ghost" size="sm">View All</Button>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {transactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      tx.type === "earn" ? "bg-success/10" : 
-                      tx.type === "spend" ? "bg-warning/10" : "bg-primary/10"
+            {transactions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <p>No transactions yet</p>
+                <p className="text-sm mt-1">Complete tasks to earn TikPoints!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {transactions.map((tx) => (
+                  <div
+                    key={tx.id}
+                    className="flex items-center justify-between p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        tx.type === "earn" ? "bg-success/10" : 
+                        tx.type === "spend" ? "bg-warning/10" : "bg-primary/10"
+                      }`}>
+                        {tx.type === "earn" ? (
+                          <ArrowDownLeft className="w-5 h-5 text-success" />
+                        ) : tx.type === "spend" ? (
+                          <ArrowUpRight className="w-5 h-5 text-warning" />
+                        ) : (
+                          <CreditCard className="w-5 h-5 text-primary" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-medium">{tx.description || tx.type}</p>
+                        <p className="text-sm text-muted-foreground">{formatDate(tx.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className={`font-semibold ${
+                      tx.amount > 0 ? "text-success" : "text-warning"
                     }`}>
-                      {tx.type === "earn" ? (
-                        <ArrowDownLeft className="w-5 h-5 text-success" />
-                      ) : tx.type === "spend" ? (
-                        <ArrowUpRight className="w-5 h-5 text-warning" />
-                      ) : (
-                        <CreditCard className="w-5 h-5 text-primary" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium">{tx.description}</p>
-                      <p className="text-sm text-muted-foreground">{tx.date}</p>
+                      {tx.amount > 0 ? "+" : ""}{tx.amount}
                     </div>
                   </div>
-                  <div className={`font-semibold ${
-                    tx.amount > 0 ? "text-success" : "text-warning"
-                  }`}>
-                    {tx.amount > 0 ? "+" : ""}{tx.amount}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
