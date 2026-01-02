@@ -14,16 +14,223 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      ads: {
+        Row: {
+          completed_count: number
+          created_at: string
+          creator_id: string
+          id: string
+          is_active: boolean
+          points_per_task: number
+          required_completions: number
+          screenshot_example_url: string | null
+          task_type: Database["public"]["Enums"]["task_type"]
+          tiktok_post_url: string
+          updated_at: string
+        }
+        Insert: {
+          completed_count?: number
+          created_at?: string
+          creator_id: string
+          id?: string
+          is_active?: boolean
+          points_per_task?: number
+          required_completions?: number
+          screenshot_example_url?: string | null
+          task_type: Database["public"]["Enums"]["task_type"]
+          tiktok_post_url: string
+          updated_at?: string
+        }
+        Update: {
+          completed_count?: number
+          created_at?: string
+          creator_id?: string
+          id?: string
+          is_active?: boolean
+          points_per_task?: number
+          required_completions?: number
+          screenshot_example_url?: string | null
+          task_type?: Database["public"]["Enums"]["task_type"]
+          tiktok_post_url?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          country: string | null
+          created_at: string
+          email: string
+          first_name: string | null
+          id: string
+          last_name: string | null
+          tik_points: number
+          tiktok_username: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          country?: string | null
+          created_at?: string
+          email: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          tik_points?: number
+          tiktok_username: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          country?: string | null
+          created_at?: string
+          email?: string
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          tik_points?: number
+          tiktok_username?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      task_submissions: {
+        Row: {
+          ad_id: string
+          admin_notes: string | null
+          ai_analysis: Json | null
+          created_at: string
+          id: string
+          points_awarded: number | null
+          screenshot_urls: string[]
+          status: Database["public"]["Enums"]["task_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ad_id: string
+          admin_notes?: string | null
+          ai_analysis?: Json | null
+          created_at?: string
+          id?: string
+          points_awarded?: number | null
+          screenshot_urls?: string[]
+          status?: Database["public"]["Enums"]["task_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ad_id?: string
+          admin_notes?: string | null
+          ai_analysis?: Json | null
+          created_at?: string
+          id?: string
+          points_awarded?: number | null
+          screenshot_urls?: string[]
+          status?: Database["public"]["Enums"]["task_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_submissions_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "ads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          id: string
+          reference_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          reference_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          reference_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
+      task_status: "pending" | "approved" | "rejected" | "needs_review"
+      task_type: "like" | "comment" | "save" | "watch"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +357,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+      task_status: ["pending", "approved", "rejected", "needs_review"],
+      task_type: ["like", "comment", "save", "watch"],
+    },
   },
 } as const

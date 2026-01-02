@@ -6,6 +6,72 @@
 
 @layer base {
   :root {
+    /* Light theme */
+    --background: 0 0% 98%;
+    --foreground: 240 10% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
+
+    /* Electric pink primary */
+    --primary: 330 90% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Light purple secondary */
+    --secondary: 270 30% 95%;
+    --secondary-foreground: 270 50% 30%;
+
+    --muted: 240 5% 92%;
+    --muted-foreground: 240 5% 45%;
+
+    /* Cyan accent */
+    --accent: 180 80% 45%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Success green */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+
+    /* Warning orange */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 240 5% 85%;
+    --input: 240 5% 90%;
+    --ring: 330 90% 50%;
+
+    --radius: 0.75rem;
+
+    /* Custom tokens */
+    --gradient-primary: linear-gradient(135deg, hsl(330 90% 50%) 0%, hsl(270 80% 55%) 50%, hsl(200 90% 50%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(180 80% 45%) 0%, hsl(200 90% 50%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(240 5% 98%) 100%);
+    --gradient-glow: radial-gradient(ellipse at center, hsl(330 90% 50% / 0.1) 0%, transparent 70%);
+    
+    --glass-bg: hsl(0 0% 100% / 0.7);
+    --glass-border: hsl(0 0% 0% / 0.1);
+    
+    --shadow-glow: 0 0 60px hsl(330 90% 50% / 0.15);
+    --shadow-card: 0 8px 32px hsl(0 0% 0% / 0.08);
+    --shadow-elevated: 0 20px 60px hsl(0 0% 0% / 0.1);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 10% 10%;
+    --sidebar-primary: 330 90% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 92%;
+    --sidebar-accent-foreground: 240 10% 10%;
+    --sidebar-border: 240 5% 85%;
+    --sidebar-ring: 330 90% 50%;
+  }
+
+  .dark {
     /* Dark theme - TikTok-inspired exchange platform */
     --background: 240 10% 4%;
     --foreground: 0 0% 98%;
@@ -45,8 +111,6 @@
     --border: 240 10% 18%;
     --input: 240 10% 15%;
     --ring: 330 90% 60%;
-
-    --radius: 0.75rem;
 
     /* Custom tokens */
     --gradient-primary: linear-gradient(135deg, hsl(330 90% 60%) 0%, hsl(270 80% 55%) 50%, hsl(200 90% 50%) 100%);

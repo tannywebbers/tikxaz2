@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
   Coins, 
@@ -12,24 +12,32 @@ import {
   LogOut,
   Menu,
   X,
-  Bell
+  Bell,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
   { icon: LayoutGrid, label: "Dashboard", href: "/dashboard" },
+  { icon: BarChart3, label: "Browse Tasks", href: "/dashboard/tasks" },
   { icon: Wallet, label: "Wallet", href: "/dashboard/wallet" },
   { icon: PlusCircle, label: "Create Ad", href: "/dashboard/create-ad" },
-  { icon: BarChart3, label: "My Tasks", href: "/dashboard/my-tasks" },
   { icon: User, label: "Profile", href: "/dashboard/profile" },
-  { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
 
 export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { profile, isAdmin, signOut } = useAuth();
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar - Desktop */}
@@ -61,10 +69,19 @@ export function DashboardLayout() {
               </Link>
             );
           })}
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
+            >
+              <Shield className="w-5 h-5" />
+              <span className="font-medium">Admin Panel</span>
+            </Link>
+          )}
         </nav>
 
         <div className="p-4 border-t border-border">
-          <Button variant="ghost" className="w-full justify-start gap-3 text-muted-foreground">
+          <Button variant="ghost" className="w-full justify-start gap-3 text-muted-foreground" onClick={handleSignOut}>
             <LogOut className="w-5 h-5" />
             Sign Out
           </Button>
@@ -137,9 +154,12 @@ export function DashboardLayout() {
             {/* Points Balance */}
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted">
               <Coins className="w-4 h-4 text-primary" />
-              <span className="font-semibold">2,450</span>
+              <span className="font-semibold">{profile?.tik_points || 0}</span>
               <Badge variant="gradient" className="text-xs">Points</Badge>
             </div>
+
+            {/* Theme Toggle */}
+            <ThemeToggle />
 
             {/* Notifications */}
             <Button variant="ghost" size="icon" className="relative">
