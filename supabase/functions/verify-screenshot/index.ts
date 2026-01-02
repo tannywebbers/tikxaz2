@@ -6,19 +6,102 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function verifyWithGemini(content: any[], verificationPrompt: string, apiKey: string) {
+  console.log("Attempting verification with Gemini...");
+  
+  // Build parts for Gemini
+  const parts: any[] = [{ text: verificationPrompt }];
+  
+  for (const item of content) {
+    if (item.type === "image_url") {
+      const imageUrl = item.image_url.url;
+      if (imageUrl.startsWith("data:image")) {
+        const base64Data = imageUrl.split(",")[1];
+        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || "image/jpeg";
+        parts.push({
+          inline_data: {
+            mime_type: mimeType,
+            data: base64Data
+          }
+        });
+      }
+    }
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024
+        }
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Gemini API error:", response.status, errorText);
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text;
+}
+
+async function verifyWithOpenAI(content: any[], verificationPrompt: string, apiKey: string) {
+  console.log("Attempting verification with OpenAI...");
+  
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: verificationPrompt },
+        ...content.filter(c => c.type === "image_url")
+      ]
+    }
+  ];
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages,
+      max_tokens: 1024
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("OpenAI API error:", response.status, errorText);
+    throw new Error(`OpenAI API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content;
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
+      throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY.");
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
@@ -94,71 +177,45 @@ Respond with a JSON object containing:
 
 Be strict but fair. If unsure, set approved to false and explain why.`;
 
-    // Prepare messages with images
-    const content: any[] = [{ type: "text", text: verificationPrompt }];
-
+    // Prepare image content
+    const content: any[] = [];
     for (const screenshot of screenshots.slice(0, 3)) {
-      if (screenshot.startsWith("data:image")) {
-        content.push({
-          type: "image_url",
-          image_url: { url: screenshot },
-        });
-      } else {
-        content.push({
-          type: "image_url",
-          image_url: { url: screenshot },
-        });
-      }
+      content.push({
+        type: "image_url",
+        image_url: { url: screenshot },
+      });
     }
 
-    // Call Lovable AI with vision model
-    const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: content,
-          },
-        ],
-      }),
-    });
+    // Try Gemini first, fallback to OpenAI
+    let aiContent: string | undefined;
+    let usedProvider = "";
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("AI API error:", aiResponse.status, errorText);
-
-      if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ approved: false, reason: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+    if (GEMINI_API_KEY) {
+      try {
+        aiContent = await verifyWithGemini(content, verificationPrompt, GEMINI_API_KEY);
+        usedProvider = "gemini";
+        console.log("Gemini verification successful");
+      } catch (geminiError) {
+        console.error("Gemini failed:", geminiError);
+        if (OPENAI_API_KEY) {
+          console.log("Falling back to OpenAI...");
+          aiContent = await verifyWithOpenAI(content, verificationPrompt, OPENAI_API_KEY);
+          usedProvider = "openai";
+        } else {
+          throw geminiError;
+        }
       }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ approved: false, reason: "AI service temporarily unavailable. Please try again later." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      throw new Error(`AI API error: ${aiResponse.status}`);
+    } else if (OPENAI_API_KEY) {
+      aiContent = await verifyWithOpenAI(content, verificationPrompt, OPENAI_API_KEY);
+      usedProvider = "openai";
     }
 
-    const aiData = await aiResponse.json();
-    const aiContent = aiData.choices?.[0]?.message?.content;
-
-    console.log("AI response:", aiContent);
+    console.log(`AI response (${usedProvider}):`, aiContent);
 
     // Parse AI response
     let verificationResult;
     try {
-      // Extract JSON from response
-      const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
+      const jsonMatch = aiContent?.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         verificationResult = JSON.parse(jsonMatch[0]);
       } else {
@@ -172,6 +229,8 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
         reason: "Unable to analyze screenshots. Please try again.",
       };
     }
+
+    verificationResult.provider = usedProvider;
 
     // Store submission in database
     const { error: insertError } = await supabase
@@ -187,12 +246,10 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
 
     if (insertError) {
       console.error("Error inserting submission:", insertError);
-      // Don't throw, continue with response
     }
 
     // If approved, update points and ad
     if (verificationResult.approved) {
-      // Get ad details for points
       const { data: adData } = await supabase
         .from("ads")
         .select("points_per_task")
@@ -201,7 +258,6 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
 
       const pointsToAward = adData?.points_per_task || 10;
 
-      // Update user points
       const { data: profile } = await supabase
         .from("profiles")
         .select("tik_points")
@@ -215,14 +271,12 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
           .eq("user_id", userId);
       }
 
-      // Update submission with points
       await supabase
         .from("task_submissions")
         .update({ points_awarded: pointsToAward, status: "approved" })
         .eq("ad_id", adId)
         .eq("user_id", userId);
 
-      // Increment ad completion count
       const { data: currentAd } = await supabase
         .from("ads")
         .select("completed_count")
@@ -236,7 +290,6 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
           .eq("id", adId);
       }
 
-      // Record transaction
       await supabase
         .from("transactions")
         .insert({
