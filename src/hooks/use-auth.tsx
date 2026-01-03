@@ -11,9 +11,11 @@ interface Profile {
   first_name: string | null;
   last_name: string | null;
   tiktok_username: string;
+  tiktok_name: string | null;
   country: string | null;
   avatar_url: string | null;
   tik_points: number;
+  created_at: string;
 }
 
 interface AuthContextType {

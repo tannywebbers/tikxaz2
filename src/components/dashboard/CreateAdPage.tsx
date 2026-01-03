@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   Link2,
@@ -7,9 +7,12 @@ import {
   MessageCircle,
   Bookmark,
   Play,
+  UserPlus,
   Coins,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Loader2,
+  Layers
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,20 +20,113 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const taskTypes = [
-  { id: "like", label: "Like", icon: Heart, points: 25, color: "from-pink-500 to-red-500" },
-  { id: "comment", label: "Comment", icon: MessageCircle, points: 50, color: "from-blue-500 to-cyan-500" },
-  { id: "save", label: "Save", icon: Bookmark, points: 35, color: "from-yellow-500 to-orange-500" },
-  { id: "watch", label: "Watch", icon: Play, points: 40, color: "from-purple-500 to-pink-500" },
+  { id: "like", label: "Like", icon: Heart, points: 10, color: "from-pink-500 to-red-500", description: "Get likes on your post" },
+  { id: "comment", label: "Comment", icon: MessageCircle, points: 15, color: "from-blue-500 to-cyan-500", description: "Get comments on your post" },
+  { id: "save", label: "Save", icon: Bookmark, points: 10, color: "from-yellow-500 to-orange-500", description: "Get saves/bookmarks" },
+  { id: "follow", label: "Follow", icon: UserPlus, points: 20, color: "from-purple-500 to-violet-500", description: "Get new followers" },
+];
+
+const comboTypes = [
+  { 
+    id: "combo_mini", 
+    label: "Combo Mini", 
+    icon: Layers, 
+    points: 30, 
+    color: "from-pink-500 via-blue-500 to-yellow-500",
+    description: "Like + Comment + Save",
+    includes: ["like", "comment", "save"],
+    maxScreenshots: 3
+  },
+  { 
+    id: "combo_large", 
+    label: "Combo Large", 
+    icon: Layers, 
+    points: 50, 
+    color: "from-pink-500 via-blue-500 via-yellow-500 to-purple-500",
+    description: "Like + Comment + Save + Follow",
+    includes: ["like", "comment", "save", "follow"],
+    maxScreenshots: 4
+  },
 ];
 
 export function CreateAdPage() {
   const [selectedType, setSelectedType] = useState("like");
   const [completions, setCompletions] = useState(100);
+  const [postLink, setPostLink] = useState("");
+  const [description, setDescription] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const selectedTask = taskTypes.find(t => t.id === selectedType);
+  const { user, profile } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  
+  const allTypes = [...taskTypes, ...comboTypes];
+  const selectedTask = allTypes.find(t => t.id === selectedType);
   const totalCost = selectedTask ? selectedTask.points * completions : 0;
+  const userBalance = profile?.tik_points || 0;
+  const canAfford = userBalance >= totalCost;
+
+  const handleCreateAd = async () => {
+    if (!postLink.trim()) {
+      toast({ variant: "destructive", title: "Error", description: "Please enter a TikTok post link." });
+      return;
+    }
+
+    if (!canAfford) {
+      toast({ variant: "destructive", title: "Insufficient Balance", description: "You don't have enough TikPoints." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Create the ad
+      const { error: adError } = await supabase
+        .from("ads")
+        .insert({
+          creator_id: user?.id,
+          tiktok_post_url: postLink,
+          task_type: selectedType as any,
+          required_completions: completions,
+          points_per_task: selectedTask?.points || 10,
+        });
+
+      if (adError) throw adError;
+
+      // Deduct points from user
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ tik_points: userBalance - totalCost })
+        .eq("user_id", user?.id);
+
+      if (updateError) throw updateError;
+
+      // Log transaction
+      await supabase
+        .from("transactions")
+        .insert({
+          user_id: user?.id,
+          amount: -totalCost,
+          type: "spend",
+          description: `Created ${selectedTask?.label} ad`,
+        });
+
+      toast({ title: "Success", description: "Your ad has been created!" });
+      navigate("/dashboard");
+    } catch (error) {
+      console.error("Error creating ad:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to create ad. Please try again." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const isCombo = selectedType.startsWith("combo");
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -46,7 +142,7 @@ export function CreateAdPage() {
         </div>
       </motion.div>
 
-      {/* Task Type Selection */}
+      {/* Single Tasks */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -54,8 +150,8 @@ export function CreateAdPage() {
       >
         <Card>
           <CardHeader>
-            <CardTitle>Select Task Type</CardTitle>
-            <CardDescription>Choose what kind of engagement you want</CardDescription>
+            <CardTitle>Single Task Types</CardTitle>
+            <CardDescription>Choose a single engagement action</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -81,6 +177,57 @@ export function CreateAdPage() {
         </Card>
       </motion.div>
 
+      {/* Combo Tasks */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="w-5 h-5" />
+              Combo Tasks
+              <Badge variant="gradient" className="ml-2">Popular</Badge>
+            </CardTitle>
+            <CardDescription>Bundle multiple actions for better value</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid md:grid-cols-2 gap-4">
+              {comboTypes.map((type) => (
+                <button
+                  key={type.id}
+                  onClick={() => setSelectedType(type.id)}
+                  className={`p-5 rounded-xl border-2 transition-all text-left ${
+                    selectedType === type.id
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${type.color} flex items-center justify-center shrink-0`}>
+                      <type.icon className="w-7 h-7 text-primary-foreground" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-lg">{type.label}</div>
+                      <div className="text-sm text-muted-foreground mb-2">{type.description}</div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {type.maxScreenshots} screenshots max
+                        </Badge>
+                        <Badge variant="gradient" className="text-xs">
+                          {type.points} pts each
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {/* Post Details */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -96,31 +243,38 @@ export function CreateAdPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="postLink">TikTok Post Link</Label>
+              <Label htmlFor="postLink">TikTok Post Link *</Label>
               <Input 
                 id="postLink" 
                 placeholder="https://www.tiktok.com/@username/video/..."
+                value={postLink}
+                onChange={(e) => setPostLink(e.target.value)}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Task Description</Label>
+              <Label htmlFor="description">Task Description (Optional)</Label>
               <Textarea 
                 id="description" 
-                placeholder="Describe what users need to do..."
+                placeholder="Any specific instructions for users..."
                 rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Example Screenshot (Optional)</Label>
-              <div className="border-2 border-dashed border-border rounded-xl p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                <Upload className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+            {isCombo && (
+              <div className="p-4 rounded-lg bg-muted/50 border border-border">
+                <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                  <AlertCircle className="w-4 h-4 text-warning" />
+                  Combo Task Requirements
+                </div>
                 <p className="text-sm text-muted-foreground">
-                  Upload a screenshot showing how the completed task should look
+                  Users must complete ALL actions in this combo ({(selectedTask as any)?.description}). 
+                  They can upload up to {(selectedTask as any)?.maxScreenshots} screenshots to prove completion.
                 </p>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -141,7 +295,7 @@ export function CreateAdPage() {
               <Input 
                 type="number" 
                 value={completions}
-                onChange={(e) => setCompletions(parseInt(e.target.value) || 0)}
+                onChange={(e) => setCompletions(Math.max(10, parseInt(e.target.value) || 10))}
                 min={10}
                 max={10000}
                 className="w-32"
@@ -167,7 +321,7 @@ export function CreateAdPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <Card variant="elevated" className="border-primary/30">
+        <Card variant="elevated" className={`border-2 ${canAfford ? "border-primary/30" : "border-destructive/30"}`}>
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
@@ -184,12 +338,28 @@ export function CreateAdPage() {
               </div>
               
               <div className="flex flex-col gap-2 w-full sm:w-auto">
-                <Button variant="gradient" size="lg" className="w-full sm:w-auto">
-                  <CheckCircle className="w-5 h-5" />
-                  Create Ad
+                <Button 
+                  variant="gradient" 
+                  size="lg" 
+                  className="w-full sm:w-auto"
+                  onClick={handleCreateAd}
+                  disabled={isSubmitting || !canAfford}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5" />
+                      Create Ad
+                    </>
+                  )}
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">
-                  Your balance: 2,450 TikPoints
+                <p className={`text-xs text-center ${canAfford ? "text-muted-foreground" : "text-destructive"}`}>
+                  Your balance: {userBalance.toLocaleString()} TikPoints
+                  {!canAfford && " (Insufficient)"}
                 </p>
               </div>
             </div>

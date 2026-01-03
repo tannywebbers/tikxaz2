@@ -56,6 +56,69 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_config: {
+        Row: {
+          api_key_set: boolean
+          created_at: string
+          id: string
+          is_default: boolean
+          is_enabled: boolean
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_set?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_enabled?: boolean
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_set?: boolean
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          is_enabled?: boolean
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_prompts: {
+        Row: {
+          confidence_threshold: number
+          created_at: string
+          id: string
+          is_active: boolean
+          prompt_content: string
+          prompt_name: string
+          task_type: string
+          updated_at: string
+        }
+        Insert: {
+          confidence_threshold?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          prompt_content: string
+          prompt_name: string
+          task_type: string
+          updated_at?: string
+        }
+        Update: {
+          confidence_threshold?: number
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          prompt_content?: string
+          prompt_name?: string
+          task_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_settings: {
         Row: {
           id: string
@@ -87,6 +150,7 @@ export type Database = {
           id: string
           last_name: string | null
           tik_points: number
+          tiktok_name: string | null
           tiktok_username: string
           updated_at: string
           user_id: string
@@ -100,6 +164,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           tik_points?: number
+          tiktok_name?: string | null
           tiktok_username: string
           updated_at?: string
           user_id: string
@@ -113,6 +178,7 @@ export type Database = {
           id?: string
           last_name?: string | null
           tik_points?: number
+          tiktok_name?: string | null
           tiktok_username?: string
           updated_at?: string
           user_id?: string
@@ -230,7 +296,14 @@ export type Database = {
     Enums: {
       app_role: "admin" | "moderator" | "user"
       task_status: "pending" | "approved" | "rejected" | "needs_review"
-      task_type: "like" | "comment" | "save" | "watch"
+      task_type:
+        | "like"
+        | "comment"
+        | "save"
+        | "watch"
+        | "follow"
+        | "combo_mini"
+        | "combo_large"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -360,7 +433,15 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "moderator", "user"],
       task_status: ["pending", "approved", "rejected", "needs_review"],
-      task_type: ["like", "comment", "save", "watch"],
+      task_type: [
+        "like",
+        "comment",
+        "save",
+        "watch",
+        "follow",
+        "combo_mini",
+        "combo_large",
+      ],
     },
   },
 } as const

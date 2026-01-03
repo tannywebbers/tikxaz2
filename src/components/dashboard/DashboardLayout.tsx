@@ -69,15 +69,6 @@ export function DashboardLayout() {
               </Link>
             );
           })}
-          {isAdmin && (
-            <Link
-              to="/admin"
-              className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-all"
-            >
-              <Shield className="w-5 h-5" />
-              <span className="font-medium">Admin Panel</span>
-            </Link>
-          )}
         </nav>
 
         <div className="p-4 border-t border-border">

@@ -9,7 +9,6 @@ const corsHeaders = {
 async function verifyWithGemini(content: any[], verificationPrompt: string, apiKey: string) {
   console.log("Attempting verification with Gemini...");
   
-  // Build parts for Gemini
   const parts: any[] = [{ text: verificationPrompt }];
   
   for (const item of content) {
@@ -19,10 +18,7 @@ async function verifyWithGemini(content: any[], verificationPrompt: string, apiK
         const base64Data = imageUrl.split(",")[1];
         const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || "image/jpeg";
         parts.push({
-          inline_data: {
-            mime_type: mimeType,
-            data: base64Data
-          }
+          inline_data: { mime_type: mimeType, data: base64Data }
         });
       }
     }
@@ -35,10 +31,7 @@ async function verifyWithGemini(content: any[], verificationPrompt: string, apiK
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1024
-        }
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
       }),
     }
   );
@@ -72,11 +65,7 @@ async function verifyWithOpenAI(content: any[], verificationPrompt: string, apiK
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages,
-      max_tokens: 1024
-    }),
+    body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: 1024 }),
   });
 
   if (!response.ok) {
@@ -101,14 +90,13 @@ serve(async (req) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
-      throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY.");
+      throw new Error("No AI API keys configured.");
     }
 
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
+    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots } = await req.json();
 
-    const { adId, userId, taskType, tiktokUsername, screenshots } = await req.json();
-
-    console.log("Verifying task:", { adId, taskType, tiktokUsername, screenshotCount: screenshots?.length });
+    console.log("Verifying task:", { adId, taskType, tiktokName, screenshotCount: screenshots?.length });
 
     if (!screenshots || screenshots.length === 0) {
       return new Response(
@@ -117,73 +105,45 @@ serve(async (req) => {
       );
     }
 
-    // Build verification prompt based on task type
-    let verificationPrompt = `You are a TikTok task verification AI. Analyze the provided screenshot(s) to verify task completion.
+    // Fetch admin-configured prompt for this task type
+    const { data: promptData } = await supabase
+      .from("ai_prompts")
+      .select("prompt_content, confidence_threshold")
+      .eq("task_type", taskType)
+      .eq("is_active", true)
+      .single();
+
+    const confidenceThreshold = promptData?.confidence_threshold || 70;
+    const displayName = tiktokName || tiktokUsername;
+
+    // Build verification prompt
+    let verificationPrompt = promptData?.prompt_content || `Verify ${taskType} task completion.`;
+    
+    verificationPrompt = `You are a TikTok task verification AI.
 
 Task Type: ${taskType.toUpperCase()}
-User's TikTok Username: @${tiktokUsername}
+User's TikTok Display Name: ${displayName}
 
-Verification Requirements:`;
+${verificationPrompt}
 
-    switch (taskType) {
-      case "like":
-        verificationPrompt += `
-- Look for the heart icon in the TikTok interface
-- The heart MUST be RED/filled (indicating the video is liked)
-- A white/outline heart means NOT liked
-- Verify this is a TikTok video interface`;
-        break;
-
-      case "save":
-        verificationPrompt += `
-- Look for the bookmark/save icon in the TikTok interface
-- The bookmark MUST be YELLOW/filled (indicating the video is saved)
-- A white/outline bookmark means NOT saved
-- Verify this is a TikTok video interface`;
-        break;
-
-      case "comment":
-        verificationPrompt += `
-- Look for the comment section
-- Find a comment that contains or is from the username: @${tiktokUsername}
-- The username MUST match exactly
-- Verify the comment is visible in the screenshot`;
-        break;
-
-      case "watch":
-        verificationPrompt += `
-- Verify this is a TikTok video interface
-- Check if the video appears to be playing or has been played
-- Look for any indication the video was viewed (progress bar, view count)`;
-        break;
-    }
-
-    verificationPrompt += `
-
-Respond with a JSON object containing:
+Respond with JSON:
 {
-  "approved": boolean,
-  "confidence": number (0-100),
-  "reason": string (brief explanation),
-  "details": {
-    "heartDetected": boolean (for like tasks),
-    "heartColor": string (for like tasks),
-    "bookmarkDetected": boolean (for save tasks),
-    "bookmarkColor": string (for save tasks),
-    "usernameFound": boolean (for comment tasks),
-    "videoInterface": boolean
+  "status": "approved" | "rejected" | "manual_review",
+  "confidence_score": 0-100,
+  "failed_reason": "string or null",
+  "detected_actions": {
+    "liked": boolean,
+    "saved": boolean,
+    "commented": boolean,
+    "followed": boolean
   }
-}
-
-Be strict but fair. If unsure, set approved to false and explain why.`;
+}`;
 
     // Prepare image content
     const content: any[] = [];
-    for (const screenshot of screenshots.slice(0, 3)) {
-      content.push({
-        type: "image_url",
-        image_url: { url: screenshot },
-      });
+    const maxScreenshots = taskType === "combo_large" ? 4 : 3;
+    for (const screenshot of screenshots.slice(0, maxScreenshots)) {
+      content.push({ type: "image_url", image_url: { url: screenshot } });
     }
 
     // Try Gemini first, fallback to OpenAI
@@ -194,11 +154,9 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
       try {
         aiContent = await verifyWithGemini(content, verificationPrompt, GEMINI_API_KEY);
         usedProvider = "gemini";
-        console.log("Gemini verification successful");
       } catch (geminiError) {
         console.error("Gemini failed:", geminiError);
         if (OPENAI_API_KEY) {
-          console.log("Falling back to OpenAI...");
           aiContent = await verifyWithOpenAI(content, verificationPrompt, OPENAI_API_KEY);
           usedProvider = "openai";
         } else {
@@ -213,107 +171,74 @@ Be strict but fair. If unsure, set approved to false and explain why.`;
     console.log(`AI response (${usedProvider}):`, aiContent);
 
     // Parse AI response
-    let verificationResult;
+    let verificationResult: any;
     try {
       const jsonMatch = aiContent?.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         verificationResult = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error("No JSON found in response");
+        throw new Error("No JSON found");
       }
-    } catch (parseError) {
-      console.error("Failed to parse AI response:", parseError);
-      verificationResult = {
-        approved: false,
-        confidence: 0,
-        reason: "Unable to analyze screenshots. Please try again.",
-      };
+    } catch {
+      verificationResult = { status: "manual_review", confidence_score: 0, failed_reason: "Unable to parse AI response" };
     }
 
-    verificationResult.provider = usedProvider;
+    // Determine approval based on status and confidence
+    const isApproved = verificationResult.status === "approved" && verificationResult.confidence_score >= confidenceThreshold;
+    const needsReview = verificationResult.status === "manual_review" || 
+      (verificationResult.confidence_score >= 50 && verificationResult.confidence_score < confidenceThreshold);
 
-    // Store submission in database
-    const { error: insertError } = await supabase
+    verificationResult.provider = usedProvider;
+    verificationResult.approved = isApproved;
+    verificationResult.confidence = verificationResult.confidence_score;
+
+    // Store submission
+    const submissionStatus = isApproved ? "approved" : (needsReview ? "needs_review" : "rejected");
+    
+    await supabase
       .from("task_submissions")
       .insert({
         ad_id: adId,
         user_id: userId,
         screenshot_urls: screenshots,
-        status: verificationResult.approved ? "approved" : (verificationResult.confidence > 50 ? "needs_review" : "rejected"),
+        status: submissionStatus,
         ai_analysis: verificationResult,
         points_awarded: null,
       });
 
-    if (insertError) {
-      console.error("Error inserting submission:", insertError);
-    }
-
-    // If approved, update points and ad
-    if (verificationResult.approved) {
-      const { data: adData } = await supabase
-        .from("ads")
-        .select("points_per_task")
-        .eq("id", adId)
-        .single();
-
+    // If approved, update points
+    if (isApproved) {
+      const { data: adData } = await supabase.from("ads").select("points_per_task").eq("id", adId).single();
       const pointsToAward = adData?.points_per_task || 10;
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("tik_points")
-        .eq("user_id", userId)
-        .single();
-
+      const { data: profile } = await supabase.from("profiles").select("tik_points").eq("user_id", userId).single();
       if (profile) {
-        await supabase
-          .from("profiles")
-          .update({ tik_points: profile.tik_points + pointsToAward })
-          .eq("user_id", userId);
+        await supabase.from("profiles").update({ tik_points: profile.tik_points + pointsToAward }).eq("user_id", userId);
       }
 
-      await supabase
-        .from("task_submissions")
-        .update({ points_awarded: pointsToAward, status: "approved" })
-        .eq("ad_id", adId)
-        .eq("user_id", userId);
+      await supabase.from("task_submissions").update({ points_awarded: pointsToAward, status: "approved" }).eq("ad_id", adId).eq("user_id", userId);
 
-      const { data: currentAd } = await supabase
-        .from("ads")
-        .select("completed_count")
-        .eq("id", adId)
-        .single();
-
+      const { data: currentAd } = await supabase.from("ads").select("completed_count").eq("id", adId).single();
       if (currentAd) {
-        await supabase
-          .from("ads")
-          .update({ completed_count: currentAd.completed_count + 1 })
-          .eq("id", adId);
+        await supabase.from("ads").update({ completed_count: currentAd.completed_count + 1 }).eq("id", adId);
       }
 
-      await supabase
-        .from("transactions")
-        .insert({
-          user_id: userId,
-          amount: pointsToAward,
-          type: "earn",
-          description: `Completed ${taskType} task`,
-          reference_id: adId,
-        });
+      await supabase.from("transactions").insert({
+        user_id: userId,
+        amount: pointsToAward,
+        type: "earn",
+        description: `Completed ${taskType} task`,
+        reference_id: adId,
+      });
 
       verificationResult.pointsAwarded = pointsToAward;
     }
 
-    return new Response(
-      JSON.stringify(verificationResult),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify(verificationResult), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("Verification error:", error);
     return new Response(
-      JSON.stringify({ 
-        approved: false, 
-        reason: error instanceof Error ? error.message : "Verification failed" 
-      }),
+      JSON.stringify({ approved: false, reason: error instanceof Error ? error.message : "Verification failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
