@@ -49,10 +49,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-background" />
+      {/* Background - pointer-events-none to prevent click blocking */}
+      <div className="absolute inset-0 bg-background pointer-events-none" />
       <div 
-        className="absolute inset-0 opacity-30"
+        className="absolute inset-0 opacity-30 pointer-events-none"
         style={{
           backgroundImage: `radial-gradient(ellipse at 30% 20%, hsl(330 90% 60% / 0.15) 0%, transparent 50%),
                             radial-gradient(ellipse at 70% 80%, hsl(180 80% 50% / 0.1) 0%, transparent 40%)`

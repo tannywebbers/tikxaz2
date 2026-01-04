@@ -8,17 +8,15 @@ import {
   User, 
   PlusCircle, 
   BarChart3,
-  Settings,
   LogOut,
   Menu,
-  X,
-  Bell,
-  Shield
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/use-auth";
+import { NotificationsDropdown } from "./NotificationsDropdown";
 
 const navItems = [
   { icon: LayoutGrid, label: "Dashboard", href: "/dashboard" },
@@ -32,12 +30,39 @@ export function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile, isAdmin, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
   };
+
+  const handleProfileClick = () => {
+    navigate("/dashboard/profile");
+  };
+
+  // Generate avatar display from emoji or initials
+  const getAvatarDisplay = () => {
+    if (profile?.avatar_url) {
+      // Check if it's an emoji
+      if (/\p{Emoji}/u.test(profile.avatar_url)) {
+        return (
+          <span className="text-xl">{profile.avatar_url}</span>
+        );
+      }
+      // It's an image URL
+      return (
+        <img 
+          src={profile.avatar_url} 
+          alt="Profile" 
+          className="w-full h-full object-cover rounded-full"
+        />
+      );
+    }
+    // Default gradient avatar
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar - Desktop */}
@@ -133,7 +158,7 @@ export function DashboardLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6">
+        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6 relative z-10">
           <div className="flex items-center gap-4">
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
               <Menu className="w-6 h-6" />
@@ -153,13 +178,15 @@ export function DashboardLayout() {
             <ThemeToggle />
 
             {/* Notifications */}
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-            </Button>
+            <NotificationsDropdown />
 
-            {/* Profile */}
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-accent" />
+            {/* Profile - Always navigates to profile page */}
+            <button
+              onClick={handleProfileClick}
+              className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all"
+            >
+              {getAvatarDisplay()}
+            </button>
           </div>
         </header>
 

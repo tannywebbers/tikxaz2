@@ -10,7 +10,8 @@ import {
   AtSign,
   ArrowRight,
   AlertTriangle,
-  Loader2
+  Loader2,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Please enter a valid email"),
+  tiktokName: z.string().min(1, "TikTok Display Name is required"),
   tiktokUsername: z.string().min(2, "TikTok username must be at least 2 characters").regex(/^[a-zA-Z0-9_.]+$/, "Username can only contain letters, numbers, underscores, and dots"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   terms: z.literal(true, { errorMap: () => ({ message: "You must accept the terms" }) }),
@@ -35,6 +37,7 @@ export default function Register() {
     firstName: "",
     lastName: "",
     email: "",
+    tiktokName: "",
     tiktokUsername: "",
     password: "",
     terms: false,
@@ -67,6 +70,7 @@ export default function Register() {
       first_name: formData.firstName,
       last_name: formData.lastName,
       tiktok_username: formData.tiktokUsername,
+      tiktok_name: formData.tiktokName,
     });
     setIsLoading(false);
 
@@ -77,10 +81,10 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 bg-background" />
+      {/* Background - pointer-events-none to prevent click blocking */}
+      <div className="absolute inset-0 bg-background pointer-events-none" />
       <div 
-        className="absolute inset-0 opacity-30"
+        className="absolute inset-0 opacity-30 pointer-events-none"
         style={{
           backgroundImage: `radial-gradient(ellipse at 70% 20%, hsl(330 90% 60% / 0.15) 0%, transparent 50%),
                             radial-gradient(ellipse at 30% 80%, hsl(180 80% 50% / 0.1) 0%, transparent 40%)`
@@ -146,11 +150,36 @@ export default function Register() {
                 {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
               </div>
 
+              {/* TikTok Display Name - CRITICAL */}
               <div className="space-y-2">
-                <Label htmlFor="tiktok" className="flex items-center gap-2">
-                  TikTok Username
-                  <Badge variant="warning" className="text-xs">Important</Badge>
+                <Label htmlFor="tiktokName" className="flex items-center gap-2">
+                  TikTok Display Name
+                  <Badge variant="destructive" className="text-xs">Cannot Change</Badge>
                 </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input 
+                    id="tiktokName" 
+                    placeholder="Your TikTok Name (as shown on profile)"
+                    className="pl-10"
+                    value={formData.tiktokName}
+                    onChange={(e) => handleChange("tiktokName", e.target.value)}
+                  />
+                </div>
+                <div className="p-3 rounded-lg bg-warning/10 border border-warning/30">
+                  <p className="text-xs text-warning flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Important:</strong> Your TikTok Display Name must exactly match your TikTok profile. 
+                      This is used to verify your comments and <strong>cannot be changed later</strong>.
+                    </span>
+                  </p>
+                </div>
+                {errors.tiktokName && <p className="text-sm text-destructive">{errors.tiktokName}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="tiktok">TikTok Username</Label>
                 <div className="relative">
                   <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input 
@@ -161,10 +190,6 @@ export default function Register() {
                     onChange={(e) => handleChange("tiktokUsername", e.target.value)}
                   />
                 </div>
-                <p className="text-xs text-warning flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  This cannot be changed later. Make sure it matches your TikTok account.
-                </p>
                 {errors.tiktokUsername && <p className="text-sm text-destructive">{errors.tiktokUsername}</p>}
               </div>
 
