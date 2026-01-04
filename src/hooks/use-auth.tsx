@@ -24,7 +24,7 @@ interface AuthContextType {
   profile: Profile | null;
   isAdmin: boolean;
   isLoading: boolean;
-  signUp: (email: string, password: string, metadata: { first_name: string; last_name: string; tiktok_username: string }) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string }) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (
     email: string, 
     password: string, 
-    metadata: { first_name: string; last_name: string; tiktok_username: string }
+    metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string }
   ) => {
     const redirectUrl = `${window.location.origin}/`;
     

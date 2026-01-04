@@ -7,10 +7,10 @@ import { Link } from "react-router-dom";
 export function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
-      {/* Background effects */}
-      <div className="absolute inset-0 bg-background" />
+      {/* Background effects - pointer-events-none to prevent click blocking */}
+      <div className="absolute inset-0 bg-background pointer-events-none" />
       <div 
-        className="absolute inset-0 opacity-30"
+        className="absolute inset-0 opacity-30 pointer-events-none"
         style={{
           backgroundImage: `radial-gradient(ellipse at 50% 0%, hsl(330 90% 60% / 0.15) 0%, transparent 50%),
                             radial-gradient(ellipse at 80% 50%, hsl(180 80% 50% / 0.1) 0%, transparent 40%),
@@ -18,9 +18,9 @@ export function HeroSection() {
         }}
       />
       
-      {/* Grid pattern */}
+      {/* Grid pattern - pointer-events-none */}
       <div 
-        className="absolute inset-0 opacity-[0.02]"
+        className="absolute inset-0 opacity-[0.02] pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(hsl(var(--foreground)) 1px, transparent 1px),
                             linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)`,

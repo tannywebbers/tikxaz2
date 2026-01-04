@@ -12,7 +12,14 @@ import {
   X,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Users,
+  Layers,
+  ArrowUpDown,
+  Clock,
+  TrendingUp,
+  Award,
+  Zap
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,13 +44,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 
-type TaskType = "like" | "comment" | "save" | "watch" | "all";
+type TaskType = "like" | "comment" | "save" | "watch" | "follow" | "combo_mini" | "combo_large" | "all";
+type SortOption = "recent" | "trending" | "highest_reward" | "lowest_effort";
 
 interface Ad {
   id: string;
   creator_id: string;
   tiktok_post_url: string;
-  task_type: "like" | "comment" | "save" | "watch";
+  task_type: string;
   required_completions: number;
   completed_count: number;
   points_per_task: number;
@@ -51,16 +59,27 @@ interface Ad {
   created_at: string;
 }
 
-const taskTypeConfig = {
+const taskTypeConfig: Record<string, { icon: React.ElementType; label: string; color: string; bgColor: string }> = {
   like: { icon: Heart, label: "Like", color: "text-red-500", bgColor: "bg-red-500/10" },
   comment: { icon: MessageCircle, label: "Comment", color: "text-blue-500", bgColor: "bg-blue-500/10" },
   save: { icon: Bookmark, label: "Save", color: "text-yellow-500", bgColor: "bg-yellow-500/10" },
   watch: { icon: Play, label: "Watch", color: "text-green-500", bgColor: "bg-green-500/10" },
+  follow: { icon: Users, label: "Follow", color: "text-purple-500", bgColor: "bg-purple-500/10" },
+  combo_mini: { icon: Layers, label: "Combo Mini", color: "text-pink-500", bgColor: "bg-pink-500/10" },
+  combo_large: { icon: Layers, label: "Combo Large", color: "text-primary", bgColor: "bg-primary/10" },
+};
+
+const sortOptions: Record<SortOption, { label: string; icon: React.ElementType }> = {
+  recent: { label: "Recently Added", icon: Clock },
+  trending: { label: "Trending", icon: TrendingUp },
+  highest_reward: { label: "Highest Reward", icon: Award },
+  lowest_effort: { label: "Lowest Effort", icon: Zap },
 };
 
 export default function TaskBrowser() {
   const [tasks, setTasks] = useState<Ad[]>([]);
   const [filter, setFilter] = useState<TaskType>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("recent");
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<Ad | null>(null);
   const [screenshots, setScreenshots] = useState<File[]>([]);
@@ -75,7 +94,7 @@ export default function TaskBrowser() {
 
   useEffect(() => {
     fetchTasks();
-  }, [filter]);
+  }, [filter, sortBy]);
 
   const fetchTasks = async () => {
     setIsLoading(true);
@@ -83,22 +102,46 @@ export default function TaskBrowser() {
       let query = supabase
         .from("ads")
         .select("*")
-        .eq("is_active", true)
-        .gt("required_completions", 0);
+        .eq("is_active", true);
 
       if (filter !== "all") {
         query = query.eq("task_type", filter);
       }
 
-      const { data, error } = await query.order("created_at", { ascending: false });
+      // Apply sorting
+      switch (sortBy) {
+        case "recent":
+          query = query.order("created_at", { ascending: false });
+          break;
+        case "trending":
+          query = query.order("completed_count", { ascending: false });
+          break;
+        case "highest_reward":
+          query = query.order("points_per_task", { ascending: false });
+          break;
+        case "lowest_effort":
+          // Single tasks first, then combo_mini, then combo_large
+          query = query.order("points_per_task", { ascending: true });
+          break;
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
       // Filter out own ads and completed tasks
-      const filteredTasks = (data || []).filter(
+      let filteredTasks = (data || []).filter(
         (task: any) => task.creator_id !== user?.id && 
         task.completed_count < task.required_completions
       );
+
+      // Additional sorting for lowest effort (prefer single tasks)
+      if (sortBy === "lowest_effort") {
+        const effortOrder: Record<string, number> = {
+          like: 1, watch: 2, save: 3, comment: 4, follow: 5, combo_mini: 6, combo_large: 7
+        };
+        filteredTasks.sort((a: any, b: any) => (effortOrder[a.task_type] || 99) - (effortOrder[b.task_type] || 99));
+      }
 
       setTasks(filteredTasks as Ad[]);
     } catch (error) {
@@ -113,13 +156,20 @@ export default function TaskBrowser() {
     }
   };
 
+  const getMaxScreenshots = (taskType: string) => {
+    if (taskType === "combo_large") return 4;
+    return 3;
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length + screenshots.length > 3) {
+    const maxScreenshots = selectedTask ? getMaxScreenshots(selectedTask.task_type) : 3;
+    
+    if (files.length + screenshots.length > maxScreenshots) {
       toast({
         variant: "destructive",
         title: "Too many files",
-        description: "You can upload a maximum of 3 screenshots.",
+        description: `You can upload a maximum of ${maxScreenshots} screenshots for this task.`,
       });
       return;
     }
@@ -137,7 +187,6 @@ export default function TaskBrowser() {
     setVerificationResult({ status: "pending", message: "Analyzing your screenshots with AI..." });
 
     try {
-      // Upload screenshots to storage first
       const screenshotUrls: string[] = [];
       
       for (const file of screenshots) {
@@ -147,9 +196,7 @@ export default function TaskBrowser() {
           .upload(fileName, file);
 
         if (uploadError) {
-          // If bucket doesn't exist, try to continue without storage
           console.error("Upload error:", uploadError);
-          // Convert to base64 for AI analysis
           const base64 = await fileToBase64(file);
           screenshotUrls.push(base64);
         } else {
@@ -160,7 +207,6 @@ export default function TaskBrowser() {
         }
       }
 
-      // Call AI verification edge function
       const { data: verifyResult, error: verifyError } = await supabase.functions.invoke(
         "verify-screenshot",
         {
@@ -168,7 +214,7 @@ export default function TaskBrowser() {
             adId: selectedTask.id,
             userId: user.id,
             taskType: selectedTask.task_type,
-            tiktokUsername: profile?.tiktok_username,
+            tiktokName: profile?.tiktok_name || profile?.tiktok_username,
             screenshots: screenshotUrls,
           },
         }
@@ -184,10 +230,8 @@ export default function TaskBrowser() {
           message: `Task verified! You earned ${selectedTask.points_per_task} TikPoints.`,
         });
         
-        // Refresh profile to update points
         await refreshProfile();
         
-        // Close modal after delay
         setTimeout(() => {
           setSelectedTask(null);
           setScreenshots([]);
@@ -220,14 +264,41 @@ export default function TaskBrowser() {
     });
   };
 
-  const TaskIcon = ({ type }: { type: keyof typeof taskTypeConfig }) => {
-    const config = taskTypeConfig[type];
+  const TaskIcon = ({ type }: { type: string }) => {
+    const config = taskTypeConfig[type] || taskTypeConfig.like;
     const Icon = config.icon;
     return (
       <div className={`w-8 h-8 rounded-lg ${config.bgColor} flex items-center justify-center`}>
         <Icon className={`w-4 h-4 ${config.color}`} />
       </div>
     );
+  };
+
+  const getTaskInstructions = (taskType: string) => {
+    const instructions: Record<string, string[]> = {
+      like: ["Tap the heart icon to like the video (heart should turn red)"],
+      comment: [`Leave a comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`],
+      save: ["Tap the bookmark icon to save the video (should turn yellow)"],
+      watch: ["Watch the entire video from start to finish"],
+      follow: ["Follow the creator's account"],
+      combo_mini: [
+        "Like the video (heart turns red)",
+        `Comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`,
+        "Save the video (bookmark turns yellow)"
+      ],
+      combo_large: [
+        "Like the video (heart turns red)",
+        `Comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`,
+        "Save the video (bookmark turns yellow)",
+        "Follow the creator's account"
+      ]
+    };
+    return instructions[taskType] || [];
+  };
+
+  const resetFilters = () => {
+    setFilter("all");
+    setSortBy("recent");
   };
 
   return (
@@ -239,37 +310,78 @@ export default function TaskBrowser() {
           <p className="text-muted-foreground">Complete tasks to earn TikPoints</p>
         </div>
 
-        {/* Filter */}
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <Select value={filter} onValueChange={(v) => setFilter(v as TaskType)}>
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Filter by type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Tasks</SelectItem>
-              <SelectItem value="like">
-                <span className="flex items-center gap-2">
-                  <Heart className="w-4 h-4 text-red-500" /> Like
-                </span>
-              </SelectItem>
-              <SelectItem value="comment">
-                <span className="flex items-center gap-2">
-                  <MessageCircle className="w-4 h-4 text-blue-500" /> Comment
-                </span>
-              </SelectItem>
-              <SelectItem value="save">
-                <span className="flex items-center gap-2">
-                  <Bookmark className="w-4 h-4 text-yellow-500" /> Save
-                </span>
-              </SelectItem>
-              <SelectItem value="watch">
-                <span className="flex items-center gap-2">
-                  <Play className="w-4 h-4 text-green-500" /> Watch
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            <Select value={filter} onValueChange={(v) => setFilter(v as TaskType)}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Filter by type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tasks</SelectItem>
+                <SelectItem value="like">
+                  <span className="flex items-center gap-2">
+                    <Heart className="w-4 h-4 text-red-500" /> Like
+                  </span>
+                </SelectItem>
+                <SelectItem value="comment">
+                  <span className="flex items-center gap-2">
+                    <MessageCircle className="w-4 h-4 text-blue-500" /> Comment
+                  </span>
+                </SelectItem>
+                <SelectItem value="save">
+                  <span className="flex items-center gap-2">
+                    <Bookmark className="w-4 h-4 text-yellow-500" /> Save
+                  </span>
+                </SelectItem>
+                <SelectItem value="watch">
+                  <span className="flex items-center gap-2">
+                    <Play className="w-4 h-4 text-green-500" /> Watch
+                  </span>
+                </SelectItem>
+                <SelectItem value="follow">
+                  <span className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-purple-500" /> Follow
+                  </span>
+                </SelectItem>
+                <SelectItem value="combo_mini">
+                  <span className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-pink-500" /> Combo Mini
+                  </span>
+                </SelectItem>
+                <SelectItem value="combo_large">
+                  <span className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-primary" /> Combo Large
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(sortOptions).map(([key, { label, icon: Icon }]) => (
+                  <SelectItem key={key} value={key}>
+                    <span className="flex items-center gap-2">
+                      <Icon className="w-4 h-4" /> {label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {(filter !== "all" || sortBy !== "recent") && (
+            <Button variant="ghost" size="sm" onClick={resetFilters}>
+              <X className="w-4 h-4 mr-1" /> Reset
+            </Button>
+          )}
         </div>
       </div>
 
@@ -302,7 +414,7 @@ export default function TaskBrowser() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent" />
                         <div>
-                          <p className="font-medium">TikTok Task</p>
+                          <p className="font-medium capitalize">{task.task_type.replace("_", " ")} Task</p>
                           <p className="text-xs text-muted-foreground">
                             {task.required_completions - task.completed_count} spots left
                           </p>
@@ -317,7 +429,7 @@ export default function TaskBrowser() {
                         +{task.points_per_task} pts
                       </Badge>
                       <Badge variant="outline" className="capitalize">
-                        {taskTypeConfig[task.task_type].label}
+                        {taskTypeConfig[task.task_type]?.label || task.task_type}
                       </Badge>
                     </div>
 
@@ -345,7 +457,7 @@ export default function TaskBrowser() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              Complete {selectedTask && taskTypeConfig[selectedTask.task_type].label} Task
+              Complete {selectedTask && (taskTypeConfig[selectedTask.task_type]?.label || selectedTask.task_type)} Task
             </DialogTitle>
             <DialogDescription>
               Follow the steps below to complete this task and earn TikPoints.
@@ -372,21 +484,20 @@ export default function TaskBrowser() {
               <div className="space-y-2">
                 <h4 className="font-medium flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">2</span>
-                  Complete the {taskTypeConfig[selectedTask.task_type].label.toLowerCase()} action
+                  Complete the required action(s)
                 </h4>
-                <p className="text-sm text-muted-foreground">
-                  {selectedTask.task_type === "like" && "Tap the heart icon to like the video (heart should turn red)."}
-                  {selectedTask.task_type === "comment" && `Leave a comment using your TikTok username (@${profile?.tiktok_username}).`}
-                  {selectedTask.task_type === "save" && "Tap the bookmark icon to save the video (should turn yellow)."}
-                  {selectedTask.task_type === "watch" && "Watch the entire video from start to finish."}
-                </p>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                  {getTaskInstructions(selectedTask.task_type).map((instruction, i) => (
+                    <li key={i}>{instruction}</li>
+                  ))}
+                </ul>
               </div>
 
               {/* Step 3 */}
               <div className="space-y-3">
                 <h4 className="font-medium flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">3</span>
-                  Upload proof screenshots (max 3)
+                  Upload proof screenshots (max {getMaxScreenshots(selectedTask.task_type)})
                 </h4>
 
                 <div className="flex flex-wrap gap-2">
@@ -406,7 +517,7 @@ export default function TaskBrowser() {
                     </div>
                   ))}
 
-                  {screenshots.length < 3 && (
+                  {screenshots.length < getMaxScreenshots(selectedTask.task_type) && (
                     <Label className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
                       <Upload className="w-5 h-5 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground mt-1">Add</span>
