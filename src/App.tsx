@@ -14,6 +14,7 @@ import Wallet from "./pages/Wallet";
 import Profile from "./pages/Profile";
 import CreateAd from "./pages/CreateAd";
 import TaskBrowser from "./pages/TaskBrowser";
+import MyAds from "./pages/MyAds";
 import NotFound from "./pages/NotFound";
 
 // Admin imports (isolated)
@@ -53,6 +54,7 @@ const App = () => (
                 <Route path="profile" element={<Profile />} />
                 <Route path="create-ad" element={<CreateAd />} />
                 <Route path="tasks" element={<TaskBrowser />} />
+                <Route path="my-ads" element={<MyAds />} />
               </Route>
 
               {/* Hidden admin routes - completely isolated */}

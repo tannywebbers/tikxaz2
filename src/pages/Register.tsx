@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { 
@@ -11,8 +11,10 @@ import {
   ArrowRight,
   AlertTriangle,
   Loader2,
-  User
+  User,
+  MapPin
 } from "lucide-react";
+import { getCountryFromIP } from "@/hooks/use-geolocation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,8 +46,18 @@ export default function Register() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
+  const [detectingCountry, setDetectingCountry] = useState(true);
   const { signUp } = useAuth();
   const navigate = useNavigate();
+
+  // Auto-detect country on mount
+  useEffect(() => {
+    getCountryFromIP().then(country => {
+      setDetectedCountry(country);
+      setDetectingCountry(false);
+    });
+  }, []);
 
   const handleChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -71,6 +83,7 @@ export default function Register() {
       last_name: formData.lastName,
       tiktok_username: formData.tiktokUsername,
       tiktok_name: formData.tiktokName,
+      country: detectedCountry,
     });
     setIsLoading(false);
 
@@ -191,6 +204,29 @@ export default function Register() {
                   />
                 </div>
                 {errors.tiktokUsername && <p className="text-sm text-destructive">{errors.tiktokUsername}</p>}
+              </div>
+
+              {/* Country Detection - Auto */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Country (Auto-detected)
+                </Label>
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 border border-border">
+                  {detectingCountry ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Detecting location...</span>
+                    </>
+                  ) : detectedCountry ? (
+                    <>
+                      <span className="text-sm font-medium">{detectedCountry}</span>
+                      <span className="text-xs text-muted-foreground">(auto-detected)</span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Location could not be detected</span>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">
