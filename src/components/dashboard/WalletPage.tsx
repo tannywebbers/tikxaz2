@@ -137,9 +137,10 @@ export function WalletPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <Card variant="elevated" className="overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/10 to-accent/20" />
-          <CardContent className="relative p-8">
+        <Card variant="elevated" className="overflow-hidden relative">
+          {/* Background gradient - non-interactive */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/10 to-accent/20 pointer-events-none" />
+          <CardContent className="relative p-8 z-10">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div>
                 <p className="text-muted-foreground mb-2">Total Balance</p>

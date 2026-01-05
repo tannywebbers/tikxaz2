@@ -7,12 +7,16 @@ import {
   Save,
   Loader2,
   Eye,
-  EyeOff
+  EyeOff,
+  PlayCircle,
+  AlertCircle,
+  CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -24,12 +28,18 @@ interface AIConfig {
   api_key_set: boolean;
 }
 
+interface KeyStatus {
+  status: "unknown" | "valid" | "invalid" | "testing";
+  message?: string;
+}
+
 export default function AdminAIConfig() {
   const [configs, setConfigs] = useState<AIConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
+  const [keyStatus, setKeyStatus] = useState<Record<string, KeyStatus>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,6 +56,16 @@ export default function AdminAIConfig() {
 
       if (error) throw error;
       setConfigs(data || []);
+      
+      // Initialize key status
+      const statusMap: Record<string, KeyStatus> = {};
+      for (const config of data || []) {
+        statusMap[config.provider] = { 
+          status: config.api_key_set ? "unknown" : "invalid",
+          message: config.api_key_set ? "Key configured" : "No key set"
+        };
+      }
+      setKeyStatus(statusMap);
     } catch (error) {
       console.error("Error fetching AI config:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to load AI configuration." });
@@ -107,8 +127,7 @@ export default function AdminAIConfig() {
 
     setIsSaving(true);
     try {
-      // In a real app, you'd call an edge function to securely store the API key
-      // For now, we just mark it as set in the config
+      // Mark key as set in the config
       const { error } = await supabase
         .from("ai_config")
         .update({ api_key_set: true })
@@ -116,7 +135,7 @@ export default function AdminAIConfig() {
 
       if (error) throw error;
 
-      // Store in platform_settings (encrypted in real implementation)
+      // Store the key in platform_settings (in production, use secrets)
       await supabase
         .from("platform_settings")
         .upsert({
@@ -128,6 +147,10 @@ export default function AdminAIConfig() {
         prev.map(c => (c.provider === provider ? { ...c, api_key_set: true } : c))
       );
       setApiKeys(prev => ({ ...prev, [provider]: "" }));
+      setKeyStatus(prev => ({
+        ...prev,
+        [provider]: { status: "unknown", message: "Key saved, test to verify" }
+      }));
 
       toast({ title: "Saved", description: `${provider} API key has been configured.` });
     } catch (error) {
@@ -136,6 +159,75 @@ export default function AdminAIConfig() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleTestApiKey = async (provider: string) => {
+    setKeyStatus(prev => ({
+      ...prev,
+      [provider]: { status: "testing", message: "Testing connection..." }
+    }));
+
+    try {
+      // Call the verify-screenshot function with a test request
+      const { data, error } = await supabase.functions.invoke("verify-screenshot", {
+        body: { 
+          test: true,
+          provider: provider 
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        setKeyStatus(prev => ({
+          ...prev,
+          [provider]: { status: "valid", message: "API key is valid and working" }
+        }));
+        toast({ title: "Success", description: `${provider} API key is valid!` });
+      } else {
+        setKeyStatus(prev => ({
+          ...prev,
+          [provider]: { status: "invalid", message: data?.error || "Invalid API key" }
+        }));
+        toast({ variant: "destructive", title: "Invalid", description: `${provider} API key is not valid.` });
+      }
+    } catch (error) {
+      console.error("Error testing API key:", error);
+      setKeyStatus(prev => ({
+        ...prev,
+        [provider]: { status: "invalid", message: "Failed to test - check edge function" }
+      }));
+      toast({ variant: "destructive", title: "Error", description: "Failed to test API key." });
+    }
+  };
+
+  const getStatusIcon = (status: KeyStatus["status"]) => {
+    switch (status) {
+      case "valid":
+        return <CheckCircle2 className="w-4 h-4 text-green-400" />;
+      case "invalid":
+        return <AlertCircle className="w-4 h-4 text-red-400" />;
+      case "testing":
+        return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-yellow-400" />;
+    }
+  };
+
+  const getStatusBadge = (status: KeyStatus) => {
+    const variants: Record<string, string> = {
+      valid: "bg-green-500/10 text-green-400 border-green-500/30",
+      invalid: "bg-red-500/10 text-red-400 border-red-500/30",
+      testing: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+      unknown: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
+    };
+    
+    return (
+      <div className={`flex items-center gap-2 px-2 py-1 rounded-md border ${variants[status.status]}`}>
+        {getStatusIcon(status.status)}
+        <span className="text-xs">{status.message}</span>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -150,7 +242,7 @@ export default function AdminAIConfig() {
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl font-semibold text-neutral-100">AI Configuration</h1>
-        <p className="text-sm text-neutral-500 mt-1">Manage AI providers and API keys</p>
+        <p className="text-sm text-neutral-500 mt-1">Manage AI providers and API keys for screenshot verification</p>
       </div>
 
       <div className="space-y-4">
@@ -176,7 +268,7 @@ export default function AdminAIConfig() {
 
               <div className="flex items-center gap-4">
                 {config.is_default && (
-                  <span className="text-xs px-2 py-1 rounded bg-neutral-800 text-neutral-300">Default</span>
+                  <Badge className="bg-primary/20 text-primary border-primary/30">Default</Badge>
                 )}
                 {config.api_key_set ? (
                   <span className="flex items-center gap-1 text-xs text-green-400">
@@ -189,6 +281,13 @@ export default function AdminAIConfig() {
                 )}
               </div>
             </div>
+
+            {/* Status indicator */}
+            {keyStatus[config.provider] && (
+              <div className="flex items-center justify-between">
+                {getStatusBadge(keyStatus[config.provider])}
+              </div>
+            )}
 
             <div className="flex items-center justify-between pt-2 border-t border-neutral-800">
               <div className="flex items-center gap-2">
@@ -211,7 +310,7 @@ export default function AdminAIConfig() {
               )}
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-neutral-800">
+            <div className="space-y-3 pt-2 border-t border-neutral-800">
               <Label className="text-neutral-400">API Key</Label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -239,11 +338,29 @@ export default function AdminAIConfig() {
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 </Button>
               </div>
-              <p className="text-xs text-neutral-500">
-                {config.provider === "gemini" 
-                  ? "Get your API key from Google AI Studio" 
-                  : "Get your API key from OpenAI Platform"}
-              </p>
+              
+              {/* Test button */}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleTestApiKey(config.provider)}
+                  disabled={!config.api_key_set || keyStatus[config.provider]?.status === "testing"}
+                  className="border-neutral-700 text-neutral-300 hover:bg-neutral-800"
+                >
+                  {keyStatus[config.provider]?.status === "testing" ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <PlayCircle className="w-4 h-4 mr-2" />
+                  )}
+                  Test API Key
+                </Button>
+                <p className="text-xs text-neutral-500">
+                  {config.provider === "gemini" 
+                    ? "Get key from Google AI Studio" 
+                    : "Get key from OpenAI Platform"}
+                </p>
+              </div>
             </div>
           </div>
         ))}

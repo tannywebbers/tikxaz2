@@ -23,6 +23,7 @@ const navItems = [
   { icon: BarChart3, label: "Browse Tasks", href: "/dashboard/tasks" },
   { icon: Wallet, label: "Wallet", href: "/dashboard/wallet" },
   { icon: PlusCircle, label: "Create Ad", href: "/dashboard/create-ad" },
+  { icon: BarChart3, label: "My Ads", href: "/dashboard/my-ads" },
   { icon: User, label: "Profile", href: "/dashboard/profile" },
 ];
 
