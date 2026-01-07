@@ -8,7 +8,9 @@ import {
   Brain,
   MessageSquare,
   LogOut,
-  Shield
+  Shield,
+  Globe,
+  Mail
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -20,6 +22,8 @@ const navItems = [
   { icon: Users, label: "Users", href: "/baki/stage/admin/users" },
   { icon: Brain, label: "AI Config", href: "/baki/stage/admin/ai-config" },
   { icon: MessageSquare, label: "AI Prompts", href: "/baki/stage/admin/prompts" },
+  { icon: Globe, label: "Landing CMS", href: "/baki/stage/admin/landing" },
+  { icon: Mail, label: "Email Config", href: "/baki/stage/admin/email" },
   { icon: Settings, label: "Settings", href: "/baki/stage/admin/settings" },
 ];
 

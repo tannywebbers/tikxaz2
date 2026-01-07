@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       ads: {
         Row: {
+          comment_keywords: string[] | null
           completed_count: number
           created_at: string
           creator_id: string
@@ -27,8 +28,10 @@ export type Database = {
           task_type: Database["public"]["Enums"]["task_type"]
           tiktok_post_url: string
           updated_at: string
+          video_description: string | null
         }
         Insert: {
+          comment_keywords?: string[] | null
           completed_count?: number
           created_at?: string
           creator_id: string
@@ -40,8 +43,10 @@ export type Database = {
           task_type: Database["public"]["Enums"]["task_type"]
           tiktok_post_url: string
           updated_at?: string
+          video_description?: string | null
         }
         Update: {
+          comment_keywords?: string[] | null
           completed_count?: number
           created_at?: string
           creator_id?: string
@@ -53,6 +58,7 @@ export type Database = {
           task_type?: Database["public"]["Enums"]["task_type"]
           tiktok_post_url?: string
           updated_at?: string
+          video_description?: string | null
         }
         Relationships: []
       }
@@ -115,6 +121,166 @@ export type Database = {
           prompt_content?: string
           prompt_name?: string
           task_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      allowed_email_domains: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          is_enabled: boolean
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          is_enabled?: boolean
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          is_enabled?: boolean
+        }
+        Relationships: []
+      }
+      follow_verifications: {
+        Row: {
+          ad_id: string
+          advertiser_tiktok_username: string
+          created_at: string
+          delay_check_at: string | null
+          delay_check_passed: boolean | null
+          id: string
+          initial_check_at: string | null
+          initial_check_passed: boolean
+          performer_tiktok_username: string
+          scheduled_delay_check: string | null
+          status: string
+          submission_id: string
+          user_id: string
+        }
+        Insert: {
+          ad_id: string
+          advertiser_tiktok_username: string
+          created_at?: string
+          delay_check_at?: string | null
+          delay_check_passed?: boolean | null
+          id?: string
+          initial_check_at?: string | null
+          initial_check_passed?: boolean
+          performer_tiktok_username: string
+          scheduled_delay_check?: string | null
+          status?: string
+          submission_id: string
+          user_id: string
+        }
+        Update: {
+          ad_id?: string
+          advertiser_tiktok_username?: string
+          created_at?: string
+          delay_check_at?: string | null
+          delay_check_passed?: boolean | null
+          id?: string
+          initial_check_at?: string | null
+          initial_check_passed?: boolean
+          performer_tiktok_username?: string
+          scheduled_delay_check?: string | null
+          status?: string
+          submission_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_verifications_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "ads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generated_comments: {
+        Row: {
+          ad_id: string
+          comment_text: string
+          created_at: string
+          id: string
+          is_used: boolean
+          user_id: string
+        }
+        Insert: {
+          ad_id: string
+          comment_text: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          user_id: string
+        }
+        Update: {
+          ad_id?: string
+          comment_text?: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_comments_ad_id_fkey"
+            columns: ["ad_id"]
+            isOneToOne: false
+            referencedRelation: "ads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      landing_content: {
+        Row: {
+          button_text: string | null
+          button_url: string | null
+          content: string | null
+          created_at: string
+          id: string
+          image_url: string | null
+          is_visible: boolean
+          metadata: Json | null
+          section_key: string
+          sort_order: number
+          subtitle: string | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          button_text?: string | null
+          button_url?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_visible?: boolean
+          metadata?: Json | null
+          section_key: string
+          sort_order?: number
+          subtitle?: string | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          button_text?: string | null
+          button_url?: string | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_visible?: boolean
+          metadata?: Json | null
+          section_key?: string
+          sort_order?: number
+          subtitle?: string | null
+          title?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -215,6 +381,45 @@ export type Database = {
           tiktok_username?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      smtp_config: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          host: string
+          id: string
+          is_enabled: boolean
+          password_set: boolean
+          port: number
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          from_email: string
+          from_name?: string
+          host: string
+          id?: string
+          is_enabled?: boolean
+          password_set?: boolean
+          port?: number
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          host?: string
+          id?: string
+          is_enabled?: boolean
+          password_set?: boolean
+          port?: number
+          updated_at?: string
+          username?: string
         }
         Relationships: []
       }
