@@ -7,15 +7,30 @@ import {
   History,
   TrendingUp,
   Plus,
-  Loader2
+  Loader2,
+  Coins
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+
+// Paystack pricing: 10 TikPoints = ₦5
+const POINTS_PER_NAIRA = 2; // 10 points / 5 naira = 2 points per naira
+const MIN_POINTS = 100;
+const MAX_POINTS = 100000;
 
 interface Transaction {
   id: string;
@@ -26,7 +41,7 @@ interface Transaction {
 }
 
 export function WalletPage() {
-  const { user } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -36,6 +51,13 @@ export function WalletPage() {
     spent: 0,
     purchased: 0
   });
+  
+  // Buy points modal
+  const [showBuyModal, setShowBuyModal] = useState(false);
+  const [pointsToBuy, setPointsToBuy] = useState(1000);
+  const [isPurchasing, setIsPurchasing] = useState(false);
+  
+  const priceInNaira = Math.ceil(pointsToBuy / POINTS_PER_NAIRA);
 
   useEffect(() => {
     if (user) {
@@ -102,10 +124,50 @@ export function WalletPage() {
   };
 
   const handleBuyPoints = () => {
-    toast({
-      title: "Coming Soon",
-      description: "Point purchases will be available soon!"
-    });
+    setShowBuyModal(true);
+  };
+  
+  const initiatePaystackPayment = async () => {
+    if (!user?.email) {
+      toast({
+        title: "Error",
+        description: "User email not found",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsPurchasing(true);
+    
+    try {
+      // Call edge function to initialize Paystack payment
+      const { data, error } = await supabase.functions.invoke("paystack-initialize", {
+        body: {
+          email: user.email,
+          amount: priceInNaira * 100, // Paystack expects amount in kobo
+          points: pointsToBuy,
+          userId: user.id,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.authorization_url) {
+        // Redirect to Paystack checkout
+        window.location.href = data.authorization_url;
+      } else {
+        throw new Error("No authorization URL received");
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      toast({
+        title: "Payment Failed",
+        description: "Could not initiate payment. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsPurchasing(false);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -285,6 +347,108 @@ export function WalletPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Buy Points Modal */}
+      <Dialog open={showBuyModal} onOpenChange={setShowBuyModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Coins className="w-5 h-5 text-primary" />
+              Buy TikPoints
+            </DialogTitle>
+            <DialogDescription>
+              Purchase TikPoints to create ads and boost your content.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Points selector */}
+            <div className="space-y-3">
+              <Label>Select Amount</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {[500, 1000, 2500, 5000, 10000, 25000].map((amount) => (
+                  <Button
+                    key={amount}
+                    variant={pointsToBuy === amount ? "default" : "outline"}
+                    className="h-auto py-3"
+                    onClick={() => setPointsToBuy(amount)}
+                  >
+                    <div className="text-center">
+                      <div className="font-bold">{amount.toLocaleString()}</div>
+                      <div className="text-xs opacity-70">pts</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom amount */}
+            <div className="space-y-2">
+              <Label htmlFor="customPoints">Or enter custom amount</Label>
+              <Input
+                id="customPoints"
+                type="number"
+                min={MIN_POINTS}
+                max={MAX_POINTS}
+                value={pointsToBuy}
+                onChange={(e) => setPointsToBuy(Math.max(MIN_POINTS, Math.min(MAX_POINTS, parseInt(e.target.value) || MIN_POINTS)))}
+              />
+              <input
+                type="range"
+                min={MIN_POINTS}
+                max={MAX_POINTS}
+                step={100}
+                value={pointsToBuy}
+                onChange={(e) => setPointsToBuy(parseInt(e.target.value))}
+                className="w-full accent-primary"
+              />
+            </div>
+
+            {/* Price display */}
+            <div className="p-4 rounded-xl bg-muted/50 border border-border">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-muted-foreground">Points</span>
+                <span className="font-bold">{pointsToBuy.toLocaleString()} TikPoints</span>
+              </div>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-muted-foreground">Rate</span>
+                <span className="text-sm">10 pts = ₦5</span>
+              </div>
+              <div className="border-t border-border pt-2 mt-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Total</span>
+                  <span className="text-2xl font-bold text-primary">₦{priceInNaira.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Pay button */}
+            <Button 
+              variant="gradient" 
+              className="w-full" 
+              size="lg"
+              onClick={initiatePaystackPayment}
+              disabled={isPurchasing}
+            >
+              {isPurchasing ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-5 h-5" />
+                  Pay ₦{priceInNaira.toLocaleString()} with Paystack
+                </>
+              )}
+            </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Secure payment powered by Paystack
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
