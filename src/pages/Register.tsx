@@ -23,10 +23,20 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { z } from "zod";
 
+// Allowed email domains
+const ALLOWED_EMAIL_DOMAINS = [
+  "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com",
+  "live.com", "msn.com", "aol.com", "protonmail.com", "mail.com",
+  "yandex.com", "zoho.com"
+];
+
 const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Please enter a valid email"),
+  email: z.string().email("Please enter a valid email").refine((email) => {
+    const domain = email.split("@")[1]?.toLowerCase();
+    return ALLOWED_EMAIL_DOMAINS.includes(domain);
+  }, "Please use a major email provider (Gmail, Yahoo, Outlook, etc.)"),
   tiktokName: z.string().min(1, "TikTok Display Name is required"),
   tiktokUsername: z.string().min(2, "TikTok username must be at least 2 characters").regex(/^[a-zA-Z0-9_.]+$/, "Username can only contain letters, numbers, underscores, and dots"),
   password: z.string().min(6, "Password must be at least 6 characters"),

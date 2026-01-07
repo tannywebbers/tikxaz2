@@ -60,6 +60,8 @@ export function CreateAdPage() {
   const [completions, setCompletions] = useState(100);
   const [postLink, setPostLink] = useState("");
   const [description, setDescription] = useState("");
+  const [videoDescription, setVideoDescription] = useState("");
+  const [commentKeywords, setCommentKeywords] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const { user, profile } = useAuth();
@@ -85,7 +87,7 @@ export function CreateAdPage() {
 
     setIsSubmitting(true);
     try {
-      // Create the ad
+      // Create the ad with video description for comment generation
       const { error: adError } = await supabase
         .from("ads")
         .insert({
@@ -94,6 +96,8 @@ export function CreateAdPage() {
           task_type: selectedType as any,
           required_completions: completions,
           points_per_task: selectedTask?.points || 10,
+          video_description: videoDescription || null,
+          comment_keywords: commentKeywords ? commentKeywords.split(',').map(k => k.trim()).filter(Boolean) : null,
         });
 
       if (adError) throw adError;
@@ -262,6 +266,41 @@ export function CreateAdPage() {
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
+
+            {/* Video Description for Comment Generation */}
+            {(selectedType === "comment" || selectedType === "combo_mini" || selectedType === "combo_large") && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="videoDescription" className="flex items-center gap-2">
+                    Video Description
+                    <Badge variant="outline" className="text-xs">For AI Comments</Badge>
+                  </Label>
+                  <Textarea 
+                    id="videoDescription" 
+                    placeholder="Describe your video content so AI can generate relevant comments..."
+                    rows={3}
+                    value={videoDescription}
+                    onChange={(e) => setVideoDescription(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This helps generate unique, relevant comments for each user.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="commentKeywords">Comment Keywords (Optional)</Label>
+                  <Input 
+                    id="commentKeywords" 
+                    placeholder="amazing, love this, fire, talent (comma separated)"
+                    value={commentKeywords}
+                    onChange={(e) => setCommentKeywords(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Keywords to include in generated comments (comma separated).
+                  </p>
+                </div>
+              </>
+            )}
 
             {isCombo && (
               <div className="p-4 rounded-lg bg-muted/50 border border-border">
