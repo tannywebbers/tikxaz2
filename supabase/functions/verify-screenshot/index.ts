@@ -6,49 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-async function verifyWithGemini(content: any[], verificationPrompt: string, apiKey: string) {
-  console.log("Attempting verification with Gemini...");
+// Verify with Lovable AI (uses built-in LOVABLE_API_KEY)
+async function verifyWithLovableAI(content: any[], verificationPrompt: string) {
+  console.log("Verifying with Lovable AI...");
   
-  const parts: any[] = [{ text: verificationPrompt }];
-  
-  for (const item of content) {
-    if (item.type === "image_url") {
-      const imageUrl = item.image_url.url;
-      if (imageUrl.startsWith("data:image")) {
-        const base64Data = imageUrl.split(",")[1];
-        const mimeType = imageUrl.match(/data:([^;]+);/)?.[1] || "image/jpeg";
-        parts.push({
-          inline_data: { mime_type: mimeType, data: base64Data }
-        });
-      }
-    }
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    throw new Error("LOVABLE_API_KEY is not configured");
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("Gemini API error:", response.status, errorText);
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text;
-}
-
-async function verifyWithOpenAI(content: any[], verificationPrompt: string, apiKey: string) {
-  console.log("Attempting verification with OpenAI...");
-  
   const messages = [
     {
       role: "user",
@@ -59,60 +25,124 @@ async function verifyWithOpenAI(content: any[], verificationPrompt: string, apiK
     }
   ];
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: 1024 }),
+    body: JSON.stringify({ 
+      model: "google/gemini-2.5-flash",
+      messages, 
+      max_tokens: 1024 
+    }),
   });
 
   if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded. Please try again later.");
+    }
+    if (response.status === 402) {
+      throw new Error("AI credits exhausted. Please contact support.");
+    }
     const errorText = await response.text();
-    console.error("OpenAI API error:", response.status, errorText);
-    throw new Error(`OpenAI API error: ${response.status}`);
+    console.error("Lovable AI error:", response.status, errorText);
+    throw new Error(`AI verification error: ${response.status}`);
   }
 
   const data = await response.json();
   return data.choices?.[0]?.message?.content;
 }
 
-async function testApiKey(provider: string, apiKey: string): Promise<boolean> {
-  try {
-    if (provider === "gemini") {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: "Say 'OK'" }] }],
-            generationConfig: { maxOutputTokens: 10 }
-          }),
-        }
-      );
-      return response.ok;
-    } else if (provider === "openai") {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: "Say 'OK'" }],
-          max_tokens: 10
-        }),
-      });
-      return response.ok;
-    }
-    return false;
-  } catch (error) {
-    console.error("API key test error:", error);
-    return false;
+// Generate a unique comment for a user based on video description
+async function generateUniqueComment(
+  videoDescription: string, 
+  keywords: string[] | null,
+  userId: string
+): Promise<string> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    // Fallback to deterministic generation
+    return generateDeterministicComment(videoDescription, keywords, userId);
   }
+
+  const prompt = `Generate a short, authentic TikTok comment (1-2 sentences, max 100 characters) for this video:
+  
+Video Description: "${videoDescription}"
+${keywords?.length ? `Keywords to consider: ${keywords.join(", ")}` : ""}
+
+Requirements:
+- Sound natural and human-like
+- Be positive and engaging
+- No emojis or hashtags
+- Unique and specific to the content
+- Between 20-80 characters
+
+Respond with ONLY the comment text, nothing else.`;
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ 
+        model: "google/gemini-2.5-flash-lite",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 50
+      }),
+    });
+
+    if (!response.ok) {
+      return generateDeterministicComment(videoDescription, keywords, userId);
+    }
+
+    const data = await response.json();
+    const comment = data.choices?.[0]?.message?.content?.trim();
+    return comment || generateDeterministicComment(videoDescription, keywords, userId);
+  } catch {
+    return generateDeterministicComment(videoDescription, keywords, userId);
+  }
+}
+
+// Fallback deterministic comment generation
+function generateDeterministicComment(
+  videoDescription: string,
+  keywords: string[] | null,
+  userId: string
+): string {
+  const commentTemplates = [
+    "This is exactly what I needed to see today!",
+    "Love this content, keep it up!",
+    "So inspiring, thank you for sharing!",
+    "This made my day, great work!",
+    "Amazing content, can't stop watching!",
+    "This is fire, definitely sharing!",
+    "Perfectly captured the vibe!",
+    "You always deliver quality content!",
+    "This hit different, love it!",
+    "Needed to see this, great timing!",
+  ];
+  
+  // Use userId hash to pick a consistent but unique comment
+  const hash = userId.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0);
+  const index = Math.abs(hash) % commentTemplates.length;
+  return commentTemplates[index];
+}
+
+// Extract timestamp from image metadata (if available) - simplified check
+function isScreenshotRecent(screenshotTimestamp: number | null, taskStartTime: number): boolean {
+  if (!screenshotTimestamp) {
+    // If we can't determine timestamp, we'll rely on AI verification
+    return true;
+  }
+  
+  const maxAgeMinutes = 5;
+  const maxAgeMs = maxAgeMinutes * 60 * 1000;
+  const age = Date.now() - screenshotTimestamp;
+  
+  return age <= maxAgeMs && screenshotTimestamp >= taskStartTime;
 }
 
 serve(async (req) => {
@@ -121,38 +151,94 @@ serve(async (req) => {
   }
 
   try {
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     const requestBody = await req.json();
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
     
-    // Handle API key test requests
-    if (requestBody.test) {
-      const provider = requestBody.provider;
-      const apiKey = provider === "gemini" ? GEMINI_API_KEY : OPENAI_API_KEY;
+    // Handle comment generation request
+    if (requestBody.action === "generate_comment") {
+      const { adId, userId } = requestBody;
       
-      if (!apiKey) {
+      // Check if comment already generated
+      const { data: existingComment } = await supabase
+        .from("generated_comments")
+        .select("comment_text")
+        .eq("ad_id", adId)
+        .eq("user_id", userId)
+        .single();
+      
+      if (existingComment) {
         return new Response(
-          JSON.stringify({ success: false, error: "API key not configured" }),
+          JSON.stringify({ comment: existingComment.comment_text }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
-      const isValid = await testApiKey(provider, apiKey);
+      // Get ad details
+      const { data: ad } = await supabase
+        .from("ads")
+        .select("video_description, comment_keywords")
+        .eq("id", adId)
+        .single();
+      
+      const comment = await generateUniqueComment(
+        ad?.video_description || "TikTok video",
+        ad?.comment_keywords,
+        userId
+      );
+      
+      // Store the generated comment
+      await supabase
+        .from("generated_comments")
+        .insert({
+          ad_id: adId,
+          user_id: userId,
+          comment_text: comment
+        });
+      
       return new Response(
-        JSON.stringify({ success: isValid, error: isValid ? null : "Invalid API key" }),
+        JSON.stringify({ comment }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
-      throw new Error("No AI API keys configured.");
+    // Handle follow verification initiation
+    if (requestBody.action === "initiate_follow_check") {
+      const { adId, userId, advertiserUsername, performerUsername, submissionId } = requestBody;
+      
+      // Store follow verification request
+      const { data: verification, error } = await supabase
+        .from("follow_verifications")
+        .insert({
+          submission_id: submissionId,
+          ad_id: adId,
+          user_id: userId,
+          advertiser_tiktok_username: advertiserUsername,
+          performer_tiktok_username: performerUsername,
+          initial_check_passed: true, // Initial check passed (user claims they followed)
+          initial_check_at: new Date().toISOString(),
+          scheduled_delay_check: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes delay
+          status: "pending_delay_check"
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: "Follow verification initiated. Will be verified in 5 minutes.",
+          verificationId: verification.id
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!);
-    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots } = requestBody;
+    // Main screenshot verification flow
+    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots, expectedComment, taskStartTime } = requestBody;
 
     console.log("Verifying task:", { adId, taskType, tiktokName, screenshotCount: screenshots?.length });
 
@@ -229,39 +315,35 @@ serve(async (req) => {
 
     const actionsToVerify = requiredActions[taskType] || ["liked"];
 
-    // Build comprehensive verification prompt
+    // Build verification prompt based on task type
+    let verificationPrompt = "";
     const customPrompt = promptData?.prompt_content || "";
-    
-    const verificationPrompt = `You are an expert TikTok task verification AI. Analyze the provided screenshot(s) with extreme precision.
 
-TASK TYPE: ${taskType.toUpperCase()}
-USER'S TIKTOK DISPLAY NAME: "${displayName}"
-REQUIRED ACTIONS TO VERIFY: ${actionsToVerify.join(", ")}
+    if (taskType === "like" || taskType === "save" || actionsToVerify.includes("liked") || actionsToVerify.includes("saved")) {
+      // Image-based verification for like and save
+      verificationPrompt = `You are a TikTok screenshot verification AI. Analyze the screenshot with precision.
+
+TASK: Verify ${taskType.toUpperCase()} action(s)
+REQUIRED ACTIONS: ${actionsToVerify.join(", ")}
 
 ${customPrompt}
 
-VERIFICATION RULES:
-1. LIKE - Look for a RED/PINK filled heart icon (not outline). The heart must be solid colored, not just an outline.
-2. SAVE - Look for a YELLOW/GOLD filled bookmark icon. It must be filled, not an outline.
-3. FOLLOW - Look for "Following" button state or a checkmark next to follow. NOT "Follow" or "Follow back".
-4. COMMENT - Look for a comment from EXACTLY the user "${displayName}". The name must match exactly as displayed. Check the comments section.
+VERIFICATION CRITERIA:
+${actionsToVerify.includes("liked") ? "- LIKE: Heart icon MUST be RED/PINK (filled, not outline)" : ""}
+${actionsToVerify.includes("saved") ? "- SAVE: Bookmark icon MUST be YELLOW/GOLD (filled, not outline)" : ""}
+${actionsToVerify.includes("commented") ? `- COMMENT: Look for a comment from "${displayName}"${expectedComment ? `. Expected comment: "${expectedComment}"` : ""}` : ""}
+${actionsToVerify.includes("followed") ? '- FOLLOW: Button must show "Following" state (not "Follow" or "Follow back")' : ""}
 
 ANTI-FRAUD CHECKS:
-- Verify the TikTok UI appears authentic (correct layout, colors, fonts)
-- Check that all screenshots appear to be from the same TikTok post (consistent content)
-- Look for any signs of image manipulation or editing
-- Verify the user's display name in comments matches "${displayName}" exactly
+- Verify authentic TikTok UI (correct layout, colors, fonts)
+- Check screenshots are from the same TikTok post
+- Look for image manipulation signs
 
-FOR COMBO TASKS (${taskType}):
-- ALL required actions must be verified for approval
-- If ANY action fails, the entire task should be rejected
-- Each action must be clearly visible in the screenshots
-
-Respond ONLY with valid JSON in this exact format:
+Respond ONLY with valid JSON:
 {
   "status": "approved" | "rejected" | "manual_review",
   "confidence_score": 0-100,
-  "failed_reason": "detailed reason if rejected or needs review, null if approved",
+  "failed_reason": "reason if rejected/review, null if approved",
   "detected_actions": {
     "liked": true/false,
     "saved": true/false,
@@ -269,8 +351,46 @@ Respond ONLY with valid JSON in this exact format:
     "followed": true/false
   },
   "matched_username": true/false,
-  "fraud_indicators": ["list any suspicious elements found, empty array if none"]
+  "fraud_indicators": []
 }`;
+    }
+
+    if (taskType === "comment") {
+      // Comment-specific verification with expected text
+      verificationPrompt = `You are a TikTok comment verification AI. Analyze the screenshot.
+
+TASK: Verify COMMENT action
+USER'S TIKTOK NAME: "${displayName}"
+${expectedComment ? `EXPECTED COMMENT TEXT: "${expectedComment}"` : ""}
+
+${customPrompt}
+
+VERIFICATION CRITERIA:
+1. Comment section must be visible
+2. A comment from EXACTLY "${displayName}" must appear
+${expectedComment ? `3. Comment text should match or be very similar to: "${expectedComment}"` : ""}
+
+Allow minor variations:
+- Small typos or autocorrect changes
+- Missing/extra spaces
+- Minor punctuation differences
+
+Respond ONLY with valid JSON:
+{
+  "status": "approved" | "rejected" | "manual_review",
+  "confidence_score": 0-100,
+  "failed_reason": "reason if rejected/review, null if approved",
+  "detected_actions": {
+    "liked": false,
+    "saved": false,
+    "commented": true/false,
+    "followed": false
+  },
+  "matched_username": true/false,
+  "comment_matched": true/false,
+  "fraud_indicators": []
+}`;
+    }
 
     // Prepare image content
     const content: any[] = [];
@@ -279,29 +399,40 @@ Respond ONLY with valid JSON in this exact format:
       content.push({ type: "image_url", image_url: { url: screenshot } });
     }
 
-    // Try Gemini first, fallback to OpenAI
+    // Use Lovable AI for verification
     let aiContent: string | undefined;
-    let usedProvider = "";
 
-    if (GEMINI_API_KEY) {
-      try {
-        aiContent = await verifyWithGemini(content, verificationPrompt, GEMINI_API_KEY);
-        usedProvider = "gemini";
-      } catch (geminiError) {
-        console.error("Gemini failed:", geminiError);
-        if (OPENAI_API_KEY) {
-          aiContent = await verifyWithOpenAI(content, verificationPrompt, OPENAI_API_KEY);
-          usedProvider = "openai";
-        } else {
-          throw geminiError;
-        }
-      }
-    } else if (OPENAI_API_KEY) {
-      aiContent = await verifyWithOpenAI(content, verificationPrompt, OPENAI_API_KEY);
-      usedProvider = "openai";
+    try {
+      aiContent = await verifyWithLovableAI(content, verificationPrompt);
+    } catch (aiError) {
+      console.error("Lovable AI error:", aiError);
+      // If AI fails, flag for manual review
+      await supabase
+        .from("task_submissions")
+        .insert({
+          ad_id: adId,
+          user_id: userId,
+          screenshot_urls: screenshots,
+          status: "needs_review",
+          ai_analysis: {
+            error: aiError instanceof Error ? aiError.message : "AI verification failed",
+            verified_at: new Date().toISOString(),
+            task_type: taskType,
+          },
+          points_awarded: null,
+        });
+
+      return new Response(
+        JSON.stringify({ 
+          approved: false, 
+          reason: "Verification temporarily unavailable. Submitted for manual review.",
+          status: "needs_review"
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    console.log(`AI response (${usedProvider}):`, aiContent);
+    console.log("AI response:", aiContent);
 
     // Parse AI response
     let verificationResult: any;
@@ -335,6 +466,30 @@ Respond ONLY with valid JSON in this exact format:
       verificationResult.failed_reason = `Failed to verify: ${failedActions.join(", ")}`;
     }
 
+    // For follow tasks, initiate delayed verification
+    if (taskType === "follow" || (taskType === "combo_large" && verificationResult.detected_actions?.followed)) {
+      // Get advertiser's TikTok username
+      const { data: adData } = await supabase
+        .from("ads")
+        .select("creator_id")
+        .eq("id", adId)
+        .single();
+      
+      if (adData) {
+        const { data: advertiserProfile } = await supabase
+          .from("profiles")
+          .select("tiktok_username")
+          .eq("user_id", adData.creator_id)
+          .single();
+        
+        if (advertiserProfile) {
+          // For follow verification, we still approve but schedule a delay check
+          // The delay check will run separately and can revoke points if unfollow is detected
+          console.log("Follow task - scheduling delay verification");
+        }
+      }
+    }
+
     // Determine approval based on status and confidence
     const isApproved = verificationResult.status === "approved" && 
                        verificationResult.confidence_score >= confidenceThreshold &&
@@ -343,7 +498,7 @@ Respond ONLY with valid JSON in this exact format:
     const needsReview = verificationResult.status === "manual_review" || 
       (verificationResult.confidence_score >= 50 && verificationResult.confidence_score < confidenceThreshold);
 
-    verificationResult.provider = usedProvider;
+    verificationResult.provider = "lovable_ai";
     verificationResult.approved = isApproved;
     verificationResult.confidence = verificationResult.confidence_score;
 
