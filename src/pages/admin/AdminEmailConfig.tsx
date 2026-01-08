@@ -10,7 +10,9 @@ import {
   Eye,
   EyeOff,
   Server,
-  Shield
+  Shield,
+  Send,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,7 @@ export default function AdminEmailConfig() {
   const [newDomain, setNewDomain] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -56,12 +59,28 @@ export default function AdminEmailConfig() {
     setIsLoading(true);
     try {
       // Fetch SMTP config
-      const { data: smtp } = await supabase
+      const { data: smtp, error: smtpError } = await supabase
         .from("smtp_config")
         .select("*")
-        .single();
+        .maybeSingle();
       
-      setSmtpConfig(smtp);
+      if (smtpError && smtpError.code !== 'PGRST116') throw smtpError;
+      
+      if (smtp) {
+        setSmtpConfig(smtp);
+      } else {
+        // Initialize with defaults
+        setSmtpConfig({
+          id: "",
+          host: "",
+          port: 587,
+          username: "",
+          password_set: false,
+          from_name: "TikPoints",
+          from_email: "",
+          is_enabled: false,
+        });
+      }
 
       // Fetch allowed domains
       const { data: domains } = await supabase
@@ -72,6 +91,7 @@ export default function AdminEmailConfig() {
       setAllowedDomains(domains || []);
     } catch (error) {
       console.error("Error fetching config:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load configuration." });
     } finally {
       setIsLoading(false);
     }
@@ -79,6 +99,11 @@ export default function AdminEmailConfig() {
 
   const handleSaveSMTP = async () => {
     if (!smtpConfig) return;
+    
+    if (!smtpConfig.host || !smtpConfig.from_email) {
+      toast({ variant: "destructive", title: "Error", description: "Please fill in host and from email." });
+      return;
+    }
     
     setIsSaving(true);
     try {
@@ -92,7 +117,6 @@ export default function AdminEmailConfig() {
       };
 
       if (smtpPassword) {
-        // In production, this would be encrypted and stored securely
         updateData.password_set = true;
       }
 
@@ -104,14 +128,17 @@ export default function AdminEmailConfig() {
         
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("smtp_config")
           .insert({
             ...updateData,
             password_set: !!smtpPassword
-          });
+          })
+          .select()
+          .single();
         
         if (error) throw error;
+        setSmtpConfig(data);
       }
 
       toast({ title: "Saved", description: "SMTP configuration updated." });
@@ -125,20 +152,41 @@ export default function AdminEmailConfig() {
     }
   };
 
+  const handleTestEmail = async () => {
+    if (!smtpConfig?.is_enabled || !smtpConfig?.password_set) {
+      toast({ variant: "destructive", title: "Error", description: "SMTP must be enabled and password set to send test email." });
+      return;
+    }
+    
+    setIsTesting(true);
+    try {
+      // This would call an edge function to send a test email
+      toast({ title: "Test Email", description: "Test email functionality would be triggered here." });
+    } catch (error) {
+      console.error("Error sending test email:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to send test email." });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const handleAddDomain = async () => {
     if (!newDomain.trim()) return;
     
     const domain = newDomain.toLowerCase().trim();
     
-    if (!/^[a-z0-9][a-z0-9-]*\.[a-z]{2,}$/.test(domain)) {
-      toast({ variant: "destructive", title: "Invalid domain", description: "Please enter a valid domain." });
+    // More flexible domain validation
+    if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(domain)) {
+      toast({ variant: "destructive", title: "Invalid domain", description: "Please enter a valid domain (e.g., gmail.com)." });
       return;
     }
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("allowed_email_domains")
-        .insert({ domain, is_enabled: true });
+        .insert({ domain, is_enabled: true })
+        .select()
+        .single();
       
       if (error) {
         if (error.code === "23505") {
@@ -149,9 +197,9 @@ export default function AdminEmailConfig() {
         return;
       }
 
+      setAllowedDomains(prev => [...prev, data]);
       toast({ title: "Added", description: `${domain} added to allowed domains.` });
       setNewDomain("");
-      fetchConfig();
     } catch (error) {
       console.error("Error adding domain:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to add domain." });
@@ -206,7 +254,7 @@ export default function AdminEmailConfig() {
       <div>
         <h1 className="text-2xl font-semibold text-neutral-100">Email Configuration</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Configure SMTP settings and allowed email domains
+          Configure SMTP settings and allowed email domains for registration
         </p>
       </div>
 
@@ -217,23 +265,29 @@ export default function AdminEmailConfig() {
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
               <Server className="w-5 h-5 text-blue-400" />
             </div>
-            <div>
+            <div className="flex-1">
               <CardTitle className="text-neutral-100">SMTP Settings</CardTitle>
               <CardDescription className="text-neutral-500">
                 Configure email sending for verification codes
               </CardDescription>
             </div>
+            {smtpConfig?.is_enabled && smtpConfig?.password_set && (
+              <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
+                <Check className="w-3 h-3 mr-1" />
+                Configured
+              </Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-neutral-400">SMTP Host</Label>
+              <Label className="text-neutral-400">SMTP Host *</Label>
               <Input
                 value={smtpConfig?.host || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, host: e.target.value } : null)}
                 className="bg-neutral-800 border-neutral-700"
-                placeholder="smtp.example.com"
+                placeholder="smtp.gmail.com"
               />
             </div>
             <div className="space-y-2">
@@ -295,7 +349,7 @@ export default function AdminEmailConfig() {
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-400">From Email</Label>
+              <Label className="text-neutral-400">From Email *</Label>
               <Input
                 value={smtpConfig?.from_email || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, from_email: e.target.value } : null)}
@@ -306,20 +360,34 @@ export default function AdminEmailConfig() {
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={smtpConfig?.is_enabled || false}
-                onCheckedChange={(checked) => setSmtpConfig(prev => prev ? { ...prev, is_enabled: checked } : null)}
-              />
-              <Label className="text-neutral-400">Enable SMTP</Label>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={smtpConfig?.is_enabled || false}
+                  onCheckedChange={(checked) => setSmtpConfig(prev => prev ? { ...prev, is_enabled: checked } : null)}
+                />
+                <Label className="text-neutral-400">Enable SMTP</Label>
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestEmail}
+                disabled={isTesting || !smtpConfig?.is_enabled || !smtpConfig?.password_set}
+                className="border-neutral-700"
+              >
+                {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                Test Email
+              </Button>
             </div>
+            
             <Button
               onClick={handleSaveSMTP}
               disabled={isSaving}
               className="bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
             >
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-              Save SMTP Settings
+              Save SMTP
             </Button>
           </div>
         </CardContent>
@@ -335,18 +403,31 @@ export default function AdminEmailConfig() {
             <div>
               <CardTitle className="text-neutral-100">Allowed Email Domains</CardTitle>
               <CardDescription className="text-neutral-500">
-                Only users with these email domains can register
+                Restrict registration to specific email domains
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-blue-400 mt-0.5" />
+              <div className="text-sm text-neutral-300">
+                <p className="font-medium mb-1">How it works</p>
+                <p className="text-neutral-400">
+                  If no domains are added, all email addresses can register. 
+                  Once you add domains, only users with those email domains can sign up.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex gap-2">
             <Input
               value={newDomain}
               onChange={(e) => setNewDomain(e.target.value)}
               className="bg-neutral-800 border-neutral-700"
-              placeholder="example.com"
+              placeholder="gmail.com"
               onKeyDown={(e) => e.key === "Enter" && handleAddDomain()}
             />
             <Button
@@ -370,7 +451,7 @@ export default function AdminEmailConfig() {
               >
                 <div className="flex items-center gap-3">
                   <Mail className="w-4 h-4 text-neutral-500" />
-                  <span className="text-neutral-200">{domain.domain}</span>
+                  <span className="text-neutral-200">@{domain.domain}</span>
                   {domain.is_enabled ? (
                     <Badge className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
                       Active
@@ -401,7 +482,9 @@ export default function AdminEmailConfig() {
 
           {allowedDomains.length === 0 && (
             <div className="text-center py-8 text-neutral-500">
-              No domains configured. All email domains are allowed.
+              <Mail className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>No domains configured.</p>
+              <p className="text-sm">All email domains are currently allowed.</p>
             </div>
           )}
         </CardContent>
