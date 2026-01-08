@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { 
   Link2,
@@ -12,7 +12,8 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
-  Layers
+  Layers,
+  User
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,20 @@ const comboTypes = [
   },
 ];
 
+// Extract TikTok username from URL
+function extractTikTokUsername(url: string): string | null {
+  try {
+    // Match patterns like:
+    // https://www.tiktok.com/@username/video/123
+    // https://tiktok.com/@username
+    // https://vm.tiktok.com/... (short URLs)
+    const match = url.match(/@([a-zA-Z0-9_.]+)/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function CreateAdPage() {
   const [selectedType, setSelectedType] = useState("like");
   const [completions, setCompletions] = useState(100);
@@ -68,6 +83,15 @@ export function CreateAdPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
   
+  // Extract username from TikTok URL
+  const extractedUsername = useMemo(() => extractTikTokUsername(postLink), [postLink]);
+  
+  // Validate that profile TikTok username matches URL username for follow tasks
+  const usernameMatchesProfile = useMemo(() => {
+    if (!extractedUsername || !profile?.tiktok_username) return null;
+    return extractedUsername.toLowerCase() === profile.tiktok_username.toLowerCase();
+  }, [extractedUsername, profile?.tiktok_username]);
+  
   const allTypes = [...taskTypes, ...comboTypes];
   const selectedTask = allTypes.find(t => t.id === selectedType);
   const totalCost = selectedTask ? selectedTask.points * completions : 0;
@@ -77,6 +101,27 @@ export function CreateAdPage() {
   const handleCreateAd = async () => {
     if (!postLink.trim()) {
       toast({ variant: "destructive", title: "Error", description: "Please enter a TikTok post link." });
+      return;
+    }
+
+    // Validate TikTok URL format
+    if (!postLink.includes('tiktok.com')) {
+      toast({ variant: "destructive", title: "Invalid URL", description: "Please enter a valid TikTok link." });
+      return;
+    }
+
+    // For follow tasks, validate username matches profile
+    if ((selectedType === "follow" || selectedType === "combo_large") && !extractedUsername) {
+      toast({ variant: "destructive", title: "Error", description: "Could not extract TikTok username from the URL." });
+      return;
+    }
+
+    if ((selectedType === "follow" || selectedType === "combo_large") && usernameMatchesProfile === false) {
+      toast({ 
+        variant: "destructive", 
+        title: "Username Mismatch", 
+        description: `The TikTok URL is for @${extractedUsername} but your profile shows @${profile?.tiktok_username}. Please use your own TikTok profile URL.` 
+      });
       return;
     }
 
@@ -254,6 +299,26 @@ export function CreateAdPage() {
                 value={postLink}
                 onChange={(e) => setPostLink(e.target.value)}
               />
+              {extractedUsername && (
+                <div className="flex items-center gap-2 text-sm">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-muted-foreground">Detected: </span>
+                  <span className={usernameMatchesProfile === false ? "text-destructive" : "text-primary"}>
+                    @{extractedUsername}
+                  </span>
+                  {usernameMatchesProfile === true && (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  )}
+                  {usernameMatchesProfile === false && (
+                    <AlertCircle className="w-4 h-4 text-destructive" />
+                  )}
+                </div>
+              )}
+              {(selectedType === "follow" || selectedType === "combo_large") && usernameMatchesProfile === false && (
+                <p className="text-xs text-destructive">
+                  For follow tasks, the TikTok URL must be from your own profile (@{profile?.tiktok_username}).
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
