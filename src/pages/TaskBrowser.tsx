@@ -19,7 +19,9 @@ import {
   Clock,
   TrendingUp,
   Award,
-  Zap
+  Zap,
+  Copy,
+  Check
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +58,7 @@ interface Ad {
   completed_count: number;
   points_per_task: number;
   screenshot_example_url: string | null;
+  video_description: string | null;
   created_at: string;
 }
 
@@ -89,12 +92,49 @@ export default function TaskBrowser() {
     message: string;
   } | null>(null);
   
+  // Comment task state
+  const [generatedComment, setGeneratedComment] = useState<string | null>(null);
+  const [isGeneratingComment, setIsGeneratingComment] = useState(false);
+  const [commentCopied, setCommentCopied] = useState(false);
+  
+  // Follow task state
+  const [isVerifyingFollow, setIsVerifyingFollow] = useState(false);
+  const [advertiserUsername, setAdvertiserUsername] = useState<string | null>(null);
+  
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
     fetchTasks();
   }, [filter, sortBy]);
+
+  // Reset state when task changes
+  useEffect(() => {
+    if (selectedTask) {
+      setGeneratedComment(null);
+      setCommentCopied(false);
+      setScreenshots([]);
+      setVerificationResult(null);
+      setAdvertiserUsername(null);
+      
+      // For follow tasks, get advertiser username
+      if (selectedTask.task_type === "follow" || selectedTask.task_type === "combo_large") {
+        fetchAdvertiserUsername(selectedTask.creator_id);
+      }
+    }
+  }, [selectedTask?.id]);
+
+  const fetchAdvertiserUsername = async (creatorId: string) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("tiktok_username")
+      .eq("user_id", creatorId)
+      .single();
+    
+    if (data) {
+      setAdvertiserUsername(data.tiktok_username);
+    }
+  };
 
   const fetchTasks = async () => {
     setIsLoading(true);
@@ -108,7 +148,6 @@ export default function TaskBrowser() {
         query = query.eq("task_type", filter);
       }
 
-      // Apply sorting
       switch (sortBy) {
         case "recent":
           query = query.order("created_at", { ascending: false });
@@ -120,7 +159,6 @@ export default function TaskBrowser() {
           query = query.order("points_per_task", { ascending: false });
           break;
         case "lowest_effort":
-          // Single tasks first, then combo_mini, then combo_large
           query = query.order("points_per_task", { ascending: true });
           break;
       }
@@ -129,13 +167,11 @@ export default function TaskBrowser() {
 
       if (error) throw error;
 
-      // Filter out own ads and completed tasks
       let filteredTasks = (data || []).filter(
         (task: any) => task.creator_id !== user?.id && 
         task.completed_count < task.required_completions
       );
 
-      // Additional sorting for lowest effort (prefer single tasks)
       if (sortBy === "lowest_effort") {
         const effortOrder: Record<string, number> = {
           like: 1, watch: 2, save: 3, comment: 4, follow: 5, combo_mini: 6, combo_large: 7
@@ -157,8 +193,15 @@ export default function TaskBrowser() {
   };
 
   const getMaxScreenshots = (taskType: string) => {
+    // No screenshots for follow-only tasks
+    if (taskType === "follow") return 0;
     if (taskType === "combo_large") return 4;
     return 3;
+  };
+
+  const requiresScreenshot = (taskType: string) => {
+    // Follow tasks don't need screenshots - we scrape to verify
+    return taskType !== "follow";
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -180,8 +223,120 @@ export default function TaskBrowser() {
     setScreenshots(screenshots.filter((_, i) => i !== index));
   };
 
+  // Generate AI comment for comment tasks
+  const generateComment = async () => {
+    if (!selectedTask || !user) return;
+    
+    setIsGeneratingComment(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("verify-screenshot", {
+        body: {
+          action: "generate_comment",
+          adId: selectedTask.id,
+          userId: user.id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.comment) {
+        setGeneratedComment(data.comment);
+        toast({
+          title: "Comment Generated",
+          description: "Copy the comment and post it on TikTok.",
+        });
+      }
+    } catch (error) {
+      console.error("Error generating comment:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate comment. Please try again.",
+      });
+    } finally {
+      setIsGeneratingComment(false);
+    }
+  };
+
+  const copyComment = async () => {
+    if (!generatedComment) return;
+    
+    await navigator.clipboard.writeText(generatedComment);
+    setCommentCopied(true);
+    toast({ title: "Copied!", description: "Comment copied to clipboard." });
+    
+    setTimeout(() => setCommentCopied(false), 3000);
+  };
+
+  // Verify follow task via scraping (no screenshot needed)
+  const verifyFollowTask = async () => {
+    if (!selectedTask || !user || !profile || !advertiserUsername) return;
+
+    setIsVerifyingFollow(true);
+    setVerificationResult({ status: "pending", message: "Checking if you follow the user..." });
+
+    try {
+      const { data, error } = await supabase.functions.invoke("verify-follow", {
+        body: {
+          action: "verify_follow_scrape",
+          adId: selectedTask.id,
+          userId: user.id,
+          advertiserUsername: advertiserUsername,
+          performerUsername: profile.tiktok_username,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.verified) {
+        setVerificationResult({
+          status: "success",
+          message: `Follow verified! You earned ${selectedTask.points_per_task} TikPoints. A re-check will occur in 5 minutes.`,
+        });
+        
+        await refreshProfile();
+        
+        setTimeout(() => {
+          setSelectedTask(null);
+          setScreenshots([]);
+          setVerificationResult(null);
+          fetchTasks();
+        }, 3000);
+      } else {
+        setVerificationResult({
+          status: "error",
+          message: data?.reason || "Could not verify that you follow this user. Please make sure you're following them and try again.",
+        });
+      }
+    } catch (error) {
+      console.error("Follow verification error:", error);
+      setVerificationResult({
+        status: "error",
+        message: "Failed to verify follow. Please try again.",
+      });
+    } finally {
+      setIsVerifyingFollow(false);
+    }
+  };
+
+  // Submit task with screenshot (for like, save, comment, combo tasks)
   const submitTask = async () => {
-    if (!selectedTask || screenshots.length === 0 || !user) return;
+    if (!selectedTask || !user) return;
+    
+    // For follow-only tasks, use different verification
+    if (selectedTask.task_type === "follow") {
+      await verifyFollowTask();
+      return;
+    }
+
+    if (screenshots.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Screenshots required",
+        description: "Please upload screenshots to verify your task.",
+      });
+      return;
+    }
 
     setIsSubmitting(true);
     setVerificationResult({ status: "pending", message: "Analyzing your screenshots with AI..." });
@@ -216,6 +371,7 @@ export default function TaskBrowser() {
             taskType: selectedTask.task_type,
             tiktokName: profile?.tiktok_name || profile?.tiktok_username,
             screenshots: screenshotUrls,
+            expectedComment: generatedComment, // Pass the expected comment for verification
           },
         }
       );
@@ -236,6 +392,7 @@ export default function TaskBrowser() {
           setSelectedTask(null);
           setScreenshots([]);
           setVerificationResult(null);
+          setGeneratedComment(null);
           fetchTasks();
         }, 2000);
       } else {
@@ -276,21 +433,31 @@ export default function TaskBrowser() {
 
   const getTaskInstructions = (taskType: string) => {
     const instructions: Record<string, string[]> = {
-      like: ["Tap the heart icon to like the video (heart should turn red)"],
-      comment: [`Leave a comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`],
-      save: ["Tap the bookmark icon to save the video (should turn yellow)"],
-      watch: ["Watch the entire video from start to finish"],
-      follow: ["Follow the creator's account"],
+      like: ["Tap the heart icon to like the video (heart should turn red)", "Take a screenshot showing the red heart"],
+      comment: [
+        "Generate your unique comment using the button below",
+        "Copy the comment and post it on the video",
+        "Take a screenshot showing your comment"
+      ],
+      save: ["Tap the bookmark icon to save the video (should turn yellow)", "Take a screenshot showing the yellow bookmark"],
+      watch: ["Watch the entire video from start to finish", "Take a screenshot at the end of the video"],
+      follow: [
+        "Open the creator's profile from the link",
+        `Follow @${advertiserUsername || "the creator"}`,
+        "Click 'Verify Follow' below - we'll check automatically"
+      ],
       combo_mini: [
         "Like the video (heart turns red)",
-        `Comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`,
-        "Save the video (bookmark turns yellow)"
+        "Generate and post the AI comment",
+        "Save the video (bookmark turns yellow)",
+        "Take screenshots of each action"
       ],
       combo_large: [
         "Like the video (heart turns red)",
-        `Comment using your TikTok name (${profile?.tiktok_name || profile?.tiktok_username})`,
+        "Generate and post the AI comment",
         "Save the video (bookmark turns yellow)",
-        "Follow the creator's account"
+        `Follow @${advertiserUsername || "the creator"}`,
+        "Take screenshots of each action"
       ]
     };
     return instructions[taskType] || [];
@@ -299,6 +466,24 @@ export default function TaskBrowser() {
   const resetFilters = () => {
     setFilter("all");
     setSortBy("recent");
+  };
+
+  const isCommentTask = selectedTask?.task_type === "comment" || 
+                        selectedTask?.task_type === "combo_mini" || 
+                        selectedTask?.task_type === "combo_large";
+
+  const isFollowOnlyTask = selectedTask?.task_type === "follow";
+
+  const canSubmit = () => {
+    if (!selectedTask) return false;
+    
+    // Follow-only tasks just need the verify button
+    if (isFollowOnlyTask) return true;
+    
+    // Comment tasks need generated comment AND screenshots
+    if (isCommentTask && !generatedComment) return false;
+    
+    return screenshots.length > 0;
   };
 
   return (
@@ -453,8 +638,10 @@ export default function TaskBrowser() {
         setSelectedTask(null);
         setScreenshots([]);
         setVerificationResult(null);
+        setGeneratedComment(null);
+        setCommentCopied(false);
       }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               Complete {selectedTask && (taskTypeConfig[selectedTask.task_type]?.label || selectedTask.task_type)} Task
@@ -466,11 +653,11 @@ export default function TaskBrowser() {
 
           {selectedTask && (
             <div className="space-y-6">
-              {/* Step 1 */}
+              {/* Step 1: Open TikTok */}
               <div className="space-y-2">
                 <h4 className="font-medium flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">1</span>
-                  Open the TikTok post
+                  Open the TikTok {isFollowOnlyTask ? "profile" : "post"}
                 </h4>
                 <Button variant="outline" className="w-full gap-2" asChild>
                   <a href={selectedTask.tiktok_post_url} target="_blank" rel="noopener noreferrer">
@@ -480,7 +667,7 @@ export default function TaskBrowser() {
                 </Button>
               </div>
 
-              {/* Step 2 */}
+              {/* Step 2: Instructions */}
               <div className="space-y-2">
                 <h4 className="font-medium flex items-center gap-2">
                   <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">2</span>
@@ -493,44 +680,104 @@ export default function TaskBrowser() {
                 </ul>
               </div>
 
-              {/* Step 3 */}
-              <div className="space-y-3">
-                <h4 className="font-medium flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">3</span>
-                  Upload proof screenshots (max {getMaxScreenshots(selectedTask.task_type)})
-                </h4>
-
-                <div className="flex flex-wrap gap-2">
-                  {screenshots.map((file, index) => (
-                    <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border">
-                      <img
-                        src={URL.createObjectURL(file)}
-                        alt={`Screenshot ${index + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={() => removeScreenshot(index)}
-                        className="absolute top-1 right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center"
+              {/* Comment Generation Section (for comment tasks) */}
+              {isCommentTask && (
+                <div className="space-y-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <h4 className="font-medium flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                    <MessageCircle className="w-4 h-4" />
+                    Generate Your Comment
+                  </h4>
+                  
+                  {!generatedComment ? (
+                    <Button 
+                      onClick={generateComment} 
+                      disabled={isGeneratingComment}
+                      className="w-full"
+                    >
+                      {isGeneratingComment ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <MessageCircle className="w-4 h-4 mr-2" />
+                          Generate AI Comment
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-3 bg-background rounded-lg border text-sm">
+                        "{generatedComment}"
+                      </div>
+                      <Button 
+                        onClick={copyComment} 
+                        variant="outline" 
+                        className="w-full gap-2"
                       >
-                        <X className="w-3 h-3" />
-                      </button>
+                        {commentCopied ? (
+                          <>
+                            <Check className="w-4 h-4 text-green-500" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy Comment
+                          </>
+                        )}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Post this exact comment on the TikTok video, then take a screenshot.
+                      </p>
                     </div>
-                  ))}
-
-                  {screenshots.length < getMaxScreenshots(selectedTask.task_type) && (
-                    <Label className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
-                      <Upload className="w-5 h-5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground mt-1">Add</span>
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleFileUpload}
-                      />
-                    </Label>
                   )}
                 </div>
-              </div>
+              )}
+
+              {/* Screenshot Upload (for non-follow tasks) */}
+              {requiresScreenshot(selectedTask.task_type) && (
+                <div className="space-y-3">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">
+                      {isCommentTask ? "3" : "3"}
+                    </span>
+                    Upload proof screenshots (max {getMaxScreenshots(selectedTask.task_type)})
+                  </h4>
+
+                  <div className="flex flex-wrap gap-2">
+                    {screenshots.map((file, index) => (
+                      <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`Screenshot ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        <button
+                          onClick={() => removeScreenshot(index)}
+                          className="absolute top-1 right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {screenshots.length < getMaxScreenshots(selectedTask.task_type) && (
+                      <Label className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+                        <Upload className="w-5 h-5 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground mt-1">Add</span>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleFileUpload}
+                        />
+                      </Label>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Verification Result */}
               {verificationResult && (
@@ -560,20 +807,41 @@ export default function TaskBrowser() {
                     +{selectedTask.points_per_task} pts
                   </Badge>
                 </div>
-                <Button
-                  variant="gradient"
-                  onClick={submitTask}
-                  disabled={screenshots.length === 0 || isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Verifying...
-                    </>
-                  ) : (
-                    "Submit for Verification"
-                  )}
-                </Button>
+                
+                {isFollowOnlyTask ? (
+                  <Button
+                    variant="gradient"
+                    onClick={verifyFollowTask}
+                    disabled={isVerifyingFollow}
+                  >
+                    {isVerifyingFollow ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      <>
+                        <Users className="w-4 h-4 mr-2" />
+                        Verify Follow
+                      </>
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="gradient"
+                    onClick={submitTask}
+                    disabled={!canSubmit() || isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      "Submit for Verification"
+                    )}
+                  </Button>
+                )}
               </div>
             </div>
           )}

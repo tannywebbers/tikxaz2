@@ -5,7 +5,6 @@ import {
   AtSign,
   Mail,
   Globe,
-  Camera,
   Save,
   AlertTriangle,
   Heart,
@@ -140,9 +139,6 @@ export function ProfilePage() {
                 <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-3xl font-bold text-primary-foreground">
                   {initials}
                 </div>
-                <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                  <Camera className="w-4 h-4 text-primary-foreground" />
-                </button>
               </div>
               
               <div className="text-center sm:text-left flex-1">
