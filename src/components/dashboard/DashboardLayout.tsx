@@ -152,6 +152,17 @@ export function DashboardLayout() {
                 );
               })}
             </nav>
+            
+            <div className="p-4 border-t border-border mt-auto">
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start gap-3 text-muted-foreground" 
+                onClick={() => { handleSignOut(); setSidebarOpen(false); }}
+              >
+                <LogOut className="w-5 h-5" />
+                Sign Out
+              </Button>
+            </div>
           </motion.aside>
         </motion.div>
       )}
