@@ -67,9 +67,9 @@ const App = () => (
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="ai-config" element={<AdminAIConfig />} />
                 <Route path="prompts" element={<AdminPrompts />} />
-                <Route path="settings" element={<AdminSettings />} />
-                <Route path="landing-cms" element={<AdminLandingCMS />} />
-                <Route path="email-config" element={<AdminEmailConfig />} />
+              <Route path="settings" element={<AdminSettings />} />
+                <Route path="landing" element={<AdminLandingCMS />} />
+                <Route path="email" element={<AdminEmailConfig />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
