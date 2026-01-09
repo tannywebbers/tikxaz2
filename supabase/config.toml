@@ -1,1 +1,13 @@
 project_id = "qamlcaujtryjpviemmlr"
+
+[functions.paystack-initialize]
+verify_jwt = false
+
+[functions.paystack-verify]
+verify_jwt = false
+
+[functions.verify-follow]
+verify_jwt = false
+
+[functions.verify-screenshot]
+verify_jwt = false

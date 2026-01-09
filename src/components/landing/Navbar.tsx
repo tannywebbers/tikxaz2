@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Coins, Menu, X } from "lucide-react";
+import { Coins, Menu, X, LogOut, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { supabase } from "@/integrations/supabase/client";
+import { User } from "@supabase/supabase-js";
 
 const navLinks = [
   { label: "How It Works", href: "#how-it-works" },
@@ -13,6 +15,30 @@ const navLinks = [
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    navigate("/");
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50">
@@ -43,12 +69,31 @@ export function Navbar() {
             {/* Desktop CTA */}
             <div className="hidden md:flex items-center gap-3">
               <ThemeToggle />
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/login">Sign In</Link>
-              </Button>
-              <Button variant="gradient" size="sm" asChild>
-                <Link to="/register">Get Started</Link>
-              </Button>
+              {!isLoading && (
+                user ? (
+                  <>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link to="/dashboard">
+                        <LayoutGrid className="w-4 h-4 mr-2" />
+                        Dashboard
+                      </Link>
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleSignOut}>
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link to="/login">Sign In</Link>
+                    </Button>
+                    <Button variant="gradient" size="sm" asChild>
+                      <Link to="/register">Get Started</Link>
+                    </Button>
+                  </>
+                )
+              )}
             </div>
 
             {/* Mobile Menu Button */}
@@ -82,12 +127,25 @@ export function Navbar() {
               </a>
             ))}
             <div className="flex gap-3 pt-4 border-t border-border">
-              <Button variant="ghost" size="sm" className="flex-1" asChild>
-                <Link to="/login">Sign In</Link>
-              </Button>
-              <Button variant="gradient" size="sm" className="flex-1" asChild>
-                <Link to="/register">Get Started</Link>
-              </Button>
+              {user ? (
+                <>
+                  <Button variant="ghost" size="sm" className="flex-1" asChild>
+                    <Link to="/dashboard" onClick={() => setIsOpen(false)}>Dashboard</Link>
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1" onClick={() => { handleSignOut(); setIsOpen(false); }}>
+                    Sign Out
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" className="flex-1" asChild>
+                    <Link to="/login">Sign In</Link>
+                  </Button>
+                  <Button variant="gradient" size="sm" className="flex-1" asChild>
+                    <Link to="/register">Get Started</Link>
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </motion.div>
