@@ -11,23 +11,32 @@ import {
   Bookmark,
   Play,
   Users,
-  Loader2
+  Loader2,
+  Layers,
+  ExternalLink
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
-const taskTypeConfig: Record<string, { icon: React.ElementType; color: string }> = {
-  like: { icon: Heart, color: "text-red-500" },
-  comment: { icon: MessageCircle, color: "text-blue-500" },
-  save: { icon: Bookmark, color: "text-yellow-500" },
-  watch: { icon: Play, color: "text-green-500" },
-  follow: { icon: Users, color: "text-purple-500" },
-  combo_mini: { icon: Heart, color: "text-pink-500" },
-  combo_large: { icon: Heart, color: "text-primary" },
+const taskTypeConfig: Record<string, { icon: React.ElementType; color: string; label: string }> = {
+  like: { icon: Heart, color: "text-red-500", label: "Like" },
+  comment: { icon: MessageCircle, color: "text-blue-500", label: "Comment" },
+  save: { icon: Bookmark, color: "text-yellow-500", label: "Save" },
+  watch: { icon: Play, color: "text-green-500", label: "Watch" },
+  follow: { icon: Users, color: "text-purple-500", label: "Follow" },
+  combo_mini: { icon: Layers, color: "text-pink-500", label: "Combo Mini" },
+  combo_large: { icon: Layers, color: "text-primary", label: "Combo Large" },
 };
 
 interface DashboardStats {
@@ -44,13 +53,17 @@ interface AvailableTask {
   points_per_task: number;
   remaining: number;
   tiktok_post_url: string;
+  video_description: string | null;
+  created_at: string;
 }
 
 export function DashboardHome() {
   const { user, profile } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [availableTasks, setAvailableTasks] = useState<AvailableTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedTask, setSelectedTask] = useState<AvailableTask | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -72,10 +85,12 @@ export function DashboardHome() {
 
       if (submissionsError) throw submissionsError;
 
+      // Get completed ad IDs to filter available tasks
+      const completedAdIds = new Set(submissions?.map(s => s.ad_id) || []);
+
       // Calculate stats from real data
       const approved = submissions?.filter(s => s.status === "approved") || [];
       const pending = submissions?.filter(s => s.status === "pending" || s.status === "needs_review") || [];
-      const rejected = submissions?.filter(s => s.status === "rejected") || [];
       const total = submissions?.length || 0;
 
       const totalEarned = approved.reduce((sum, s) => sum + (s.points_awarded || 0), 0);
@@ -106,25 +121,31 @@ export function DashboardHome() {
         monthlyChange
       });
 
-      // Fetch available tasks (ads)
+      // Fetch available tasks (ads) - excluding completed ones
       const { data: ads, error: adsError } = await supabase
         .from("ads")
         .select("*")
         .eq("is_active", true)
         .neq("creator_id", user.id)
         .order("created_at", { ascending: false })
-        .limit(4);
+        .limit(10);
 
       if (adsError) throw adsError;
 
       const tasksWithRemaining = (ads || [])
-        .filter(ad => ad.completed_count < ad.required_completions)
+        .filter(ad => 
+          ad.completed_count < ad.required_completions && 
+          !completedAdIds.has(ad.id)
+        )
+        .slice(0, 4)
         .map(ad => ({
           id: ad.id,
           task_type: ad.task_type,
           points_per_task: ad.points_per_task,
           remaining: ad.required_completions - ad.completed_count,
-          tiktok_post_url: ad.tiktok_post_url
+          tiktok_post_url: ad.tiktok_post_url,
+          video_description: ad.video_description,
+          created_at: ad.created_at
         }));
 
       setAvailableTasks(tasksWithRemaining);
@@ -133,6 +154,15 @@ export function DashboardHome() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleTaskClick = (task: AvailableTask) => {
+    setSelectedTask(task);
+  };
+
+  const goToTaskBrowser = () => {
+    setSelectedTask(null);
+    navigate("/dashboard/tasks");
   };
 
   if (isLoading) {
@@ -238,18 +268,24 @@ export function DashboardHome() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 + index * 0.1 }}
                 >
-                  <Card variant="interactive" className="h-full">
+                  <Card 
+                    variant="interactive" 
+                    className="h-full cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => handleTaskClick(task)}
+                  >
                     <CardContent className="p-5">
                       <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent" />
+                        <div className={`w-10 h-10 rounded-xl ${config.color.replace('text-', 'bg-')}/10 flex items-center justify-center`}>
+                          <Icon className={`w-5 h-5 ${config.color}`} />
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate capitalize">{task.task_type.replace("_", " ")} Task</div>
+                          <div className="font-medium truncate">{config.label} Task</div>
                           <div className="text-xs text-muted-foreground">{task.remaining} spots left</div>
                         </div>
                       </div>
 
                       <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                        Complete this {task.task_type.replace("_", " ")} task to earn points
+                        {task.video_description || `Complete this ${config.label.toLowerCase()} task to earn points`}
                       </p>
 
                       <div className="flex items-center justify-between">
@@ -257,10 +293,9 @@ export function DashboardHome() {
                           <Coins className="w-3 h-3" />
                           +{task.points_per_task}
                         </Badge>
-                        <div className={`flex items-center gap-1 text-xs capitalize ${config.color}`}>
-                          <Icon className="w-4 h-4" />
-                          {task.task_type.replace("_", " ")}
-                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          Click to start
+                        </span>
                       </div>
                     </CardContent>
                   </Card>
@@ -270,6 +305,70 @@ export function DashboardHome() {
           </div>
         )}
       </div>
+
+      {/* Task Preview Dialog */}
+      <Dialog open={!!selectedTask} onOpenChange={(open) => !open && setSelectedTask(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedTask && (
+                <>
+                  {(() => {
+                    const config = taskTypeConfig[selectedTask.task_type] || taskTypeConfig.like;
+                    const Icon = config.icon;
+                    return <Icon className={`w-5 h-5 ${config.color}`} />;
+                  })()}
+                  {taskTypeConfig[selectedTask?.task_type || "like"]?.label || "Task"} Task
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              Complete this task to earn {selectedTask?.points_per_task} TikPoints
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedTask && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-lg bg-muted/50">
+                <p className="text-sm">
+                  {selectedTask.video_description || `Complete this ${selectedTask.task_type.replace("_", " ")} task`}
+                </p>
+              </div>
+              
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Reward</span>
+                <Badge variant="gradient" className="gap-1">
+                  <Coins className="w-3 h-3" />
+                  +{selectedTask.points_per_task} TikPoints
+                </Badge>
+              </div>
+              
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Spots remaining</span>
+                <span className="font-medium">{selectedTask.remaining}</span>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => window.open(selectedTask.tiktok_post_url, "_blank")}
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View on TikTok
+                </Button>
+                <Button 
+                  variant="gradient" 
+                  className="flex-1"
+                  onClick={goToTaskBrowser}
+                >
+                  Start Task
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Quick Actions */}
       <div className="grid sm:grid-cols-2 gap-4">

@@ -6,180 +6,149 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Scrape TikTok profile to check if user follows another user
-async function scrapeFollowStatus(
+// Use AI to check if follower follows target by analyzing profile page HTML
+async function checkFollowWithAI(
   followerUsername: string,
   targetUsername: string
-): Promise<{ isFollowing: boolean; error?: string; method?: string }> {
-  console.log(`Scraping follow status: @${followerUsername} -> @${targetUsername}`);
-  
-  try {
-    // Try to access the follower's following list or profile
-    // TikTok's web interface provides some clues about follow relationships
-    
-    // Method 1: Check follower's profile page for following count
-    const followerProfileUrl = `https://www.tiktok.com/@${followerUsername}`;
-    
-    const profileResponse = await fetch(followerProfileUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Cache-Control': 'no-cache',
-      },
-    });
-
-    if (!profileResponse.ok) {
-      console.error(`Failed to fetch profile: ${profileResponse.status}`);
-      return { isFollowing: false, error: `Profile fetch failed: ${profileResponse.status}` };
-    }
-
-    const html = await profileResponse.text();
-    
-    // Look for JSON-LD data that TikTok embeds in their pages
-    const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
-    
-    // Look for __UNIVERSAL_DATA_FOR_REHYDRATION__ which contains user data
-    const universalDataMatch = html.match(/<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/i);
-    
-    if (universalDataMatch) {
-      try {
-        const universalData = JSON.parse(universalDataMatch[1]);
-        // Navigate the data structure to find following list
-        // This varies based on TikTok's current page structure
-        console.log("Found universal data, parsing...");
-        
-        // Check if target username appears in any following context
-        const dataStr = JSON.stringify(universalData).toLowerCase();
-        if (dataStr.includes(targetUsername.toLowerCase())) {
-          console.log("Target username found in profile data");
-          return { isFollowing: true, method: "universal_data" };
-        }
-      } catch (e) {
-        console.log("Failed to parse universal data:", e);
-      }
-    }
-    
-    // Method 2: Try to access the target's profile and check mutual follow indicators
-    const targetProfileUrl = `https://www.tiktok.com/@${targetUsername}`;
-    
-    const targetResponse = await fetch(targetProfileUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-      },
-    });
-
-    if (targetResponse.ok) {
-      const targetHtml = await targetResponse.text();
-      
-      // Check for follower count and if it includes the follower
-      // TikTok pages include follower data that might reference followers
-      const targetDataStr = targetHtml.toLowerCase();
-      
-      // Look for any indication that follower is in the followers list
-      if (targetDataStr.includes(`@${followerUsername.toLowerCase()}`)) {
-        console.log("Follower username found in target's page data");
-        return { isFollowing: true, method: "target_profile" };
-      }
-    }
-
-    // If we can't definitively determine, we'll use AI fallback or return uncertain
-    console.log("Could not definitively determine follow status via scraping");
-    return { 
-      isFollowing: false, 
-      error: "Unable to verify follow status via public profile data. Profile may be private or TikTok blocking access.",
-      method: "scrape_inconclusive"
-    };
-    
-  } catch (error) {
-    console.error("Error scraping follow status:", error);
-    return { 
-      isFollowing: false, 
-      error: error instanceof Error ? error.message : "Scraping error" 
-    };
-  }
-}
-
-// Use AI to verify follow from profile screenshot (backup method)
-async function verifyFollowWithAI(
-  screenshotUrl: string,
-  advertiserUsername: string,
-  performerUsername: string
-): Promise<{ isFollowing: boolean; confidence: number; reason?: string }> {
+): Promise<{ isFollowing: boolean; confidence: number; reason: string }> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    throw new Error("LOVABLE_API_KEY is not configured");
+    throw new Error("LOVABLE_API_KEY not configured");
   }
 
-  const prompt = `Analyze this TikTok screenshot to verify a FOLLOW action.
+  // First, fetch the follower's profile page to get their following list
+  console.log(`Fetching profile for @${followerUsername}...`);
+  
+  const profileUrl = `https://www.tiktok.com/@${followerUsername}`;
+  
+  try {
+    const response = await fetch(profileUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      },
+    });
 
-TASK: Verify that user "@${performerUsername}" is following user "@${advertiserUsername}"
+    if (!response.ok) {
+      console.error(`Failed to fetch profile: ${response.status}`);
+      return { 
+        isFollowing: false, 
+        confidence: 0, 
+        reason: `Could not access @${followerUsername}'s profile. It may be private.` 
+      };
+    }
 
-LOOK FOR:
-1. The profile being viewed should be "@${advertiserUsername}"
-2. The Follow button should show "Following" state (not "Follow" or "Follow back")
-3. OR the screenshot shows the Following list of "${performerUsername}" with "${advertiserUsername}" visible
+    const html = await response.text();
+    
+    // Look for JSON data that TikTok embeds
+    const scriptMatch = html.match(/<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>([\s\S]*?)<\/script>/i);
+    
+    if (scriptMatch) {
+      try {
+        const jsonData = JSON.parse(scriptMatch[1]);
+        const jsonString = JSON.stringify(jsonData);
+        
+        // Check if target username appears in the data
+        const targetLower = targetUsername.toLowerCase().replace('@', '');
+        const containsTarget = jsonString.toLowerCase().includes(targetLower);
+        
+        console.log(`Profile data fetched. Target @${targetUsername} found in data: ${containsTarget}`);
+        
+        // Use AI to analyze the data
+        const aiPrompt = `Analyze this TikTok profile data to determine if user "@${followerUsername}" follows "@${targetUsername}".
 
-VERIFICATION CRITERIA:
-- "Following" button state = CONFIRMED FOLLOW
-- "Follow" or "Follow back" button = NOT FOLLOWING
-- If viewing a Following list, look for "@${advertiserUsername}" in the list
+Profile page HTML data preview (first 5000 chars):
+${jsonString.substring(0, 5000)}
+
+TASK: Determine if there's evidence that @${followerUsername} follows @${targetUsername}
+
+Look for:
+1. Following list data
+2. Mutual relationship indicators
+3. Any mention of @${targetUsername} in the following context
 
 Respond ONLY with valid JSON:
 {
   "is_following": true/false,
   "confidence": 0-100,
-  "button_state": "Following" | "Follow" | "Follow back" | "unknown",
-  "profile_visible": "@username that appears",
+  "evidence": "what you found that indicates follow/no follow",
   "reason": "explanation"
 }`;
 
-  try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
+        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [{ role: "user", content: aiPrompt }],
+            max_tokens: 500
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const aiData = await aiResponse.json();
+          const content = aiData.choices?.[0]?.message?.content;
+          const jsonMatch = content?.match(/\{[\s\S]*\}/);
+          
+          if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0]);
+            return {
+              isFollowing: result.is_following === true,
+              confidence: result.confidence || 0,
+              reason: result.reason || "AI analysis complete"
+            };
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing profile data:", e);
+      }
+    }
+
+    // Fallback: Try to fetch the target's followers page
+    console.log(`Checking @${targetUsername}'s followers...`);
+    
+    const targetProfileUrl = `https://www.tiktok.com/@${targetUsername}`;
+    const targetResponse = await fetch(targetProfileUrl, {
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       },
-      body: JSON.stringify({ 
-        model: "google/gemini-2.5-flash",
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: screenshotUrl } }
-          ]
-        }],
-        max_tokens: 500
-      }),
     });
 
-    if (!response.ok) {
-      throw new Error(`AI verification failed: ${response.status}`);
+    if (targetResponse.ok) {
+      const targetHtml = await targetResponse.text();
+      const followerLower = followerUsername.toLowerCase().replace('@', '');
+      
+      // Check if follower appears in the target's page data
+      if (targetHtml.toLowerCase().includes(followerLower)) {
+        console.log(`Found @${followerUsername} mentioned on @${targetUsername}'s profile`);
+        return {
+          isFollowing: true,
+          confidence: 75,
+          reason: `Found reference to @${followerUsername} on @${targetUsername}'s profile`
+        };
+      }
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    // Cannot determine with high confidence
+    return {
+      isFollowing: false,
+      confidence: 30,
+      reason: "Could not verify follow status from public profile data. TikTok may be blocking scraping attempts."
+    };
     
-    const jsonMatch = content?.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
-      return {
-        isFollowing: result.is_following === true,
-        confidence: result.confidence || 0,
-        reason: result.reason
-      };
-    }
-    
-    return { isFollowing: false, confidence: 0, reason: "Failed to parse AI response" };
   } catch (error) {
-    console.error("AI verification error:", error);
-    return { 
-      isFollowing: false, 
-      confidence: 0, 
-      reason: error instanceof Error ? error.message : "Unknown error" 
+    console.error("Scraping error:", error);
+    return {
+      isFollowing: false,
+      confidence: 0,
+      reason: error instanceof Error ? error.message : "Failed to check profile"
     };
   }
 }
@@ -196,11 +165,11 @@ serve(async (req) => {
 
     const { action, ...params } = await req.json();
 
-    // Primary: Scrape-based follow verification (no screenshot needed)
+    // Primary: Check follow status by scraping profiles
     if (action === "verify_follow_scrape") {
       const { adId, userId, advertiserUsername, performerUsername } = params;
       
-      console.log(`Verifying follow via scraping: @${performerUsername} -> @${advertiserUsername}`);
+      console.log(`Verifying follow: @${performerUsername} -> @${advertiserUsername}`);
       
       // Check if user already submitted for this task
       const { data: existingSubmission } = await supabase
@@ -220,12 +189,7 @@ serve(async (req) => {
         );
       }
       
-      // Attempt to verify via scraping
-      const scrapeResult = await scrapeFollowStatus(performerUsername, advertiserUsername);
-      
-      console.log("Scrape result:", scrapeResult);
-      
-      // Get ad details for points
+      // Get ad details
       const { data: ad } = await supabase
         .from("ads")
         .select("points_per_task, completed_count, required_completions")
@@ -239,14 +203,21 @@ serve(async (req) => {
         );
       }
 
-      // Due to TikTok's anti-scraping measures, we'll trust the user's claim
-      // but schedule a delayed verification check
-      // In production, you might want to use a proper TikTok API partnership
+      // Check if task is still available
+      if (ad.completed_count >= ad.required_completions) {
+        return new Response(
+          JSON.stringify({ verified: false, reason: "This task is no longer available" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       
-      // For now, we'll approve with delayed verification
-      const isVerified = true; // Trust initially, verify later
+      // Actually verify the follow using AI + scraping
+      const checkResult = await checkFollowWithAI(performerUsername, advertiserUsername);
       
-      if (isVerified) {
+      console.log("Follow check result:", checkResult);
+      
+      // Only approve if we have reasonable confidence
+      if (checkResult.isFollowing && checkResult.confidence >= 50) {
         // Create submission record
         const { data: submission, error: submissionError } = await supabase
           .from("task_submissions")
@@ -257,10 +228,10 @@ serve(async (req) => {
             status: "approved",
             points_awarded: ad.points_per_task,
             ai_analysis: {
-              method: "scrape_verification",
-              scrape_result: scrapeResult,
+              method: "profile_scrape_ai",
+              result: checkResult,
               verified_at: new Date().toISOString(),
-              note: "Approved initially, subject to delayed re-verification"
+              note: "Verified via profile analysis"
             }
           })
           .select()
@@ -268,7 +239,7 @@ serve(async (req) => {
         
         if (submissionError) throw submissionError;
         
-        // Store follow verification for delayed check
+        // Store follow verification for delayed re-check
         await supabase
           .from("follow_verifications")
           .insert({
@@ -321,7 +292,7 @@ serve(async (req) => {
             user_id: userId,
             type: "task_approved",
             title: "Task Approved!",
-            message: `Your follow task was approved! +${ad.points_per_task} TikPoints`,
+            message: `Your follow task was approved! +${ad.points_per_task} TikPoints. Will be re-verified in 5 minutes.`,
             reference_id: adId
           });
         
@@ -329,52 +300,34 @@ serve(async (req) => {
           JSON.stringify({ 
             verified: true, 
             points: ad.points_per_task,
-            message: "Follow verified! Will be re-checked in 5 minutes."
+            confidence: checkResult.confidence,
+            message: `Follow verified! You earned ${ad.points_per_task} TikPoints. A re-check will occur in 5 minutes to ensure you remain following.`
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
       
-      return new Response(
-        JSON.stringify({ 
-          verified: false, 
-          reason: scrapeResult.error || "Could not verify follow. Make sure you're following the user and your profile is public."
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // AI-based verification with screenshot (backup method)
-    if (action === "verify_follow") {
-      const { screenshotUrl, advertiserUsername, performerUsername, submissionId, adId, userId } = params;
-      
-      console.log(`Verifying follow with AI: ${performerUsername} -> ${advertiserUsername}`);
-      
-      const aiResult = await verifyFollowWithAI(screenshotUrl, advertiserUsername, performerUsername);
-      
-      console.log("AI verification result:", aiResult);
-      
-      if (aiResult.isFollowing && aiResult.confidence >= 70) {
+      // If confidence is low but not zero, mark for manual review
+      if (checkResult.confidence >= 30 && checkResult.confidence < 50) {
         await supabase
-          .from("follow_verifications")
-          .upsert({
-            submission_id: submissionId,
+          .from("task_submissions")
+          .insert({
             ad_id: adId,
             user_id: userId,
-            advertiser_tiktok_username: advertiserUsername,
-            performer_tiktok_username: performerUsername,
-            initial_check_passed: true,
-            initial_check_at: new Date().toISOString(),
-            scheduled_delay_check: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-            status: "pending_delay_check"
-          }, { onConflict: 'submission_id' });
+            screenshot_urls: [],
+            status: "needs_review",
+            ai_analysis: {
+              method: "profile_scrape_ai",
+              result: checkResult,
+              verified_at: new Date().toISOString(),
+              note: "Low confidence, needs manual review"
+            }
+          });
         
         return new Response(
           JSON.stringify({ 
-            verified: true, 
-            confidence: aiResult.confidence,
-            message: "Follow verified. Will be re-checked in 5 minutes.",
-            reason: aiResult.reason
+            verified: false, 
+            reason: `Could not automatically verify follow. Your submission has been sent for manual review. Reason: ${checkResult.reason}`
           }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -383,14 +336,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           verified: false, 
-          confidence: aiResult.confidence,
-          reason: aiResult.reason || "Could not verify follow action"
+          confidence: checkResult.confidence,
+          reason: checkResult.reason || "Could not verify that you follow this user. Please make sure you're following them and your profile is public."
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Delayed verification check (called by scheduled job)
+    // Delayed verification check (called by scheduled job or admin)
     if (action === "delayed_check") {
       const { verificationId } = params;
       
@@ -407,7 +360,7 @@ serve(async (req) => {
         );
       }
       
-      const scrapeResult = await scrapeFollowStatus(
+      const checkResult = await checkFollowWithAI(
         verification.performer_tiktok_username,
         verification.advertiser_tiktok_username
       );
@@ -417,13 +370,13 @@ serve(async (req) => {
         .from("follow_verifications")
         .update({
           delay_check_at: new Date().toISOString(),
-          delay_check_passed: scrapeResult.isFollowing || verification.initial_check_passed,
-          status: scrapeResult.isFollowing ? "verified" : (scrapeResult.error ? "unverifiable" : "unfollowed")
+          delay_check_passed: checkResult.isFollowing,
+          status: checkResult.isFollowing ? "verified" : (checkResult.confidence < 30 ? "unverifiable" : "unfollowed")
         })
         .eq("id", verificationId);
       
-      // If user unfollowed and we can confirm it, revoke points
-      if (!scrapeResult.isFollowing && !scrapeResult.error && scrapeResult.method !== "scrape_inconclusive") {
+      // If user unfollowed, revoke points
+      if (!checkResult.isFollowing && checkResult.confidence >= 50) {
         const { data: submission } = await supabase
           .from("task_submissions")
           .select("points_awarded, user_id")
@@ -464,43 +417,94 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           checked: true, 
-          stillFollowing: scrapeResult.isFollowing,
-          error: scrapeResult.error
+          stillFollowing: checkResult.isFollowing,
+          confidence: checkResult.confidence,
+          reason: checkResult.reason
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Process pending delayed checks
+    // Process all pending delayed checks
     if (action === "process_pending_checks") {
       const { data: pendingChecks } = await supabase
         .from("follow_verifications")
         .select("*")
         .eq("status", "pending_delay_check")
         .lt("scheduled_delay_check", new Date().toISOString())
-        .limit(50);
-      
-      const results = [];
-      for (const check of pendingChecks || []) {
-        const scrapeResult = await scrapeFollowStatus(
-          check.performer_tiktok_username,
-          check.advertiser_tiktok_username
+        .limit(10);
+
+      if (!pendingChecks || pendingChecks.length === 0) {
+        return new Response(
+          JSON.stringify({ processed: 0 }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
-        
-        await supabase
-          .from("follow_verifications")
-          .update({
-            delay_check_at: new Date().toISOString(),
-            delay_check_passed: scrapeResult.isFollowing || check.initial_check_passed,
-            status: scrapeResult.isFollowing ? "verified" : (scrapeResult.error ? "unverifiable" : "unfollowed")
-          })
-          .eq("id", check.id);
-        
-        results.push({ id: check.id, result: scrapeResult });
       }
-      
+
+      let processed = 0;
+      for (const check of pendingChecks) {
+        try {
+          const checkResult = await checkFollowWithAI(
+            check.performer_tiktok_username,
+            check.advertiser_tiktok_username
+          );
+
+          await supabase
+            .from("follow_verifications")
+            .update({
+              delay_check_at: new Date().toISOString(),
+              delay_check_passed: checkResult.isFollowing,
+              status: checkResult.isFollowing ? "verified" : "unfollowed"
+            })
+            .eq("id", check.id);
+
+          // Handle unfollow
+          if (!checkResult.isFollowing && checkResult.confidence >= 50) {
+            const { data: submission } = await supabase
+              .from("task_submissions")
+              .select("points_awarded, user_id")
+              .eq("id", check.submission_id)
+              .single();
+
+            if (submission?.points_awarded) {
+              const { data: profile } = await supabase
+                .from("profiles")
+                .select("tik_points")
+                .eq("user_id", submission.user_id)
+                .single();
+
+              if (profile) {
+                await supabase
+                  .from("profiles")
+                  .update({ tik_points: Math.max(0, profile.tik_points - submission.points_awarded) })
+                  .eq("user_id", submission.user_id);
+              }
+
+              await supabase
+                .from("task_submissions")
+                .update({ status: "rejected", admin_notes: "User unfollowed after delayed check" })
+                .eq("id", check.submission_id);
+
+              await supabase
+                .from("notifications")
+                .insert({
+                  user_id: submission.user_id,
+                  type: "points_revoked",
+                  title: "Points Revoked",
+                  message: `Your follow task points were revoked because you unfollowed the user.`,
+                  reference_id: check.ad_id
+                });
+            }
+          }
+
+          processed++;
+        } catch (e) {
+          console.error(`Error processing check ${check.id}:`, e);
+        }
+      }
+
       return new Response(
-        JSON.stringify({ processed: results.length, results }),
+        JSON.stringify({ processed }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -509,10 +513,14 @@ serve(async (req) => {
       JSON.stringify({ error: "Unknown action" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ 
+        verified: false, 
+        error: error instanceof Error ? error.message : "Verification failed" 
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
