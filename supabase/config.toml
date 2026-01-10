@@ -1,5 +1,8 @@
 project_id = "qamlcaujtryjpviemmlr"
 
+[functions.paystack-webhook]
+verify_jwt = false
+
 [functions.paystack-initialize]
 verify_jwt = false
 

@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,8 +12,11 @@ serve(async (req) => {
 
   try {
     const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY");
+    const APP_URL = Deno.env.get("APP_URL") || "https://tikswap.online";
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     
     if (!PAYSTACK_SECRET_KEY) {
+      console.error("PAYSTACK_SECRET_KEY not configured");
       return new Response(
         JSON.stringify({ error: "Paystack not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -23,6 +25,8 @@ serve(async (req) => {
 
     const { email, amount, points, userId } = await req.json();
 
+    console.log("Initializing payment:", { email, amount, points, userId });
+
     if (!email || !amount || !points || !userId) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
@@ -30,9 +34,10 @@ serve(async (req) => {
       );
     }
 
-    // Get the callback URL from environment or use default
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const callbackUrl = `${SUPABASE_URL}/functions/v1/paystack-webhook`;
+    // Use the callback URL for redirect after payment
+    const callbackUrl = `${SUPABASE_URL}/functions/v1/paystack-verify`;
+
+    console.log("Callback URL:", callbackUrl);
 
     // Initialize Paystack transaction
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -44,10 +49,10 @@ serve(async (req) => {
       body: JSON.stringify({
         email,
         amount, // in kobo
-        callback_url: `${Deno.env.get("VITE_SUPABASE_URL")?.replace('/rest/v1', '')}/functions/v1/paystack-verify`,
+        callback_url: callbackUrl,
         metadata: {
           user_id: userId,
-          points: points,
+          points: points.toString(),
           custom_fields: [
             {
               display_name: "TikPoints",
@@ -60,6 +65,8 @@ serve(async (req) => {
     });
 
     const paystackData = await paystackResponse.json();
+
+    console.log("Paystack response:", paystackData);
 
     if (!paystackData.status) {
       console.error("Paystack error:", paystackData);

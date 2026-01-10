@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { 
   ArrowUpRight, 
   ArrowDownLeft, 
@@ -8,7 +9,9 @@ import {
   TrendingUp,
   Plus,
   Loader2,
-  Coins
+  Coins,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +46,7 @@ interface Transaction {
 export function WalletPage() {
   const { user, profile, refreshProfile } = useAuth();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +62,38 @@ export function WalletPage() {
   const [isPurchasing, setIsPurchasing] = useState(false);
   
   const priceInNaira = Math.ceil(pointsToBuy / POINTS_PER_NAIRA);
+
+  // Handle payment callback
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const pointsPurchased = searchParams.get("points");
+    
+    if (paymentStatus === "success") {
+      toast({
+        title: "Payment Successful! 🎉",
+        description: pointsPurchased 
+          ? `${pointsPurchased} TikPoints have been added to your wallet.`
+          : "Your TikPoints have been added to your wallet.",
+      });
+      // Clear the query params
+      setSearchParams({});
+      // Refresh wallet data
+      if (user) {
+        fetchWalletData();
+        refreshProfile?.();
+      }
+    } else if (paymentStatus === "failed" || paymentStatus === "error") {
+      const reason = searchParams.get("reason");
+      toast({
+        title: "Payment Failed",
+        description: reason 
+          ? `Payment could not be processed: ${reason}`
+          : "Payment could not be processed. Please try again.",
+        variant: "destructive"
+      });
+      setSearchParams({});
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (user) {
