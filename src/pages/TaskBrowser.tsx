@@ -139,6 +139,14 @@ export default function TaskBrowser() {
   const fetchTasks = async () => {
     setIsLoading(true);
     try {
+      // First, get tasks the user has already completed
+      const { data: completedSubmissions } = await supabase
+        .from("task_submissions")
+        .select("ad_id")
+        .eq("user_id", user?.id);
+      
+      const completedAdIds = new Set(completedSubmissions?.map(s => s.ad_id) || []);
+
       let query = supabase
         .from("ads")
         .select("*")
@@ -167,9 +175,15 @@ export default function TaskBrowser() {
 
       if (error) throw error;
 
+      // Filter out:
+      // 1. Tasks created by the user
+      // 2. Tasks that are fully completed
+      // 3. Tasks the user has already submitted (completed or pending)
       let filteredTasks = (data || []).filter(
-        (task: any) => task.creator_id !== user?.id && 
-        task.completed_count < task.required_completions
+        (task: any) => 
+          task.creator_id !== user?.id && 
+          task.completed_count < task.required_completions &&
+          !completedAdIds.has(task.id)
       );
 
       if (sortBy === "lowest_effort") {

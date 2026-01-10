@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Verify with Lovable AI (uses built-in LOVABLE_API_KEY)
+// Verify with Lovable AI
 async function verifyWithLovableAI(content: any[], verificationPrompt: string) {
   console.log("Verifying with Lovable AI...");
   
@@ -62,7 +62,6 @@ async function generateUniqueComment(
 ): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) {
-    // Fallback to deterministic generation
     return generateDeterministicComment(videoDescription, keywords, userId);
   }
 
@@ -125,24 +124,9 @@ function generateDeterministicComment(
     "Needed to see this, great timing!",
   ];
   
-  // Use userId hash to pick a consistent but unique comment
   const hash = userId.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0);
   const index = Math.abs(hash) % commentTemplates.length;
   return commentTemplates[index];
-}
-
-// Extract timestamp from image metadata (if available) - simplified check
-function isScreenshotRecent(screenshotTimestamp: number | null, taskStartTime: number): boolean {
-  if (!screenshotTimestamp) {
-    // If we can't determine timestamp, we'll rely on AI verification
-    return true;
-  }
-  
-  const maxAgeMinutes = 5;
-  const maxAgeMs = maxAgeMinutes * 60 * 1000;
-  const age = Date.now() - screenshotTimestamp;
-  
-  return age <= maxAgeMs && screenshotTimestamp >= taskStartTime;
 }
 
 serve(async (req) => {
@@ -204,43 +188,10 @@ serve(async (req) => {
       );
     }
 
-    // Handle follow verification initiation
-    if (requestBody.action === "initiate_follow_check") {
-      const { adId, userId, advertiserUsername, performerUsername, submissionId } = requestBody;
-      
-      // Store follow verification request
-      const { data: verification, error } = await supabase
-        .from("follow_verifications")
-        .insert({
-          submission_id: submissionId,
-          ad_id: adId,
-          user_id: userId,
-          advertiser_tiktok_username: advertiserUsername,
-          performer_tiktok_username: performerUsername,
-          initial_check_passed: true, // Initial check passed (user claims they followed)
-          initial_check_at: new Date().toISOString(),
-          scheduled_delay_check: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes delay
-          status: "pending_delay_check"
-        })
-        .select()
-        .single();
-      
-      if (error) throw error;
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: "Follow verification initiated. Will be verified in 5 minutes.",
-          verificationId: verification.id
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Main screenshot verification flow
-    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots, expectedComment, taskStartTime } = requestBody;
+    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots, expectedComment } = requestBody;
 
-    console.log("Verifying task:", { adId, taskType, tiktokName, screenshotCount: screenshots?.length });
+    console.log("Verifying task:", { adId, taskType, tiktokName, tiktokUsername, expectedComment, screenshotCount: screenshots?.length });
 
     if (!screenshots || screenshots.length === 0) {
       return new Response(
@@ -266,8 +217,7 @@ serve(async (req) => {
         JSON.stringify({ 
           approved: false, 
           reason: "Screenshot has been used in a previous submission",
-          status: "rejected",
-          detected_actions: { liked: false, saved: false, commented: false, followed: false }
+          status: "rejected"
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -314,80 +264,140 @@ serve(async (req) => {
     };
 
     const actionsToVerify = requiredActions[taskType] || ["liked"];
-
-    // Build verification prompt based on task type
-    let verificationPrompt = "";
     const customPrompt = promptData?.prompt_content || "";
 
-    if (taskType === "like" || taskType === "save" || actionsToVerify.includes("liked") || actionsToVerify.includes("saved")) {
-      // Image-based verification for like and save
-      verificationPrompt = `You are a TikTok screenshot verification AI. Analyze the screenshot with precision.
-
-TASK: Verify ${taskType.toUpperCase()} action(s)
-REQUIRED ACTIONS: ${actionsToVerify.join(", ")}
-
-${customPrompt}
-
-VERIFICATION CRITERIA:
-${actionsToVerify.includes("liked") ? "- LIKE: Heart icon MUST be RED/PINK (filled, not outline)" : ""}
-${actionsToVerify.includes("saved") ? "- SAVE: Bookmark icon MUST be YELLOW/GOLD (filled, not outline)" : ""}
-${actionsToVerify.includes("commented") ? `- COMMENT: Look for a comment from "${displayName}"${expectedComment ? `. Expected comment: "${expectedComment}"` : ""}` : ""}
-${actionsToVerify.includes("followed") ? '- FOLLOW: Button must show "Following" state (not "Follow" or "Follow back")' : ""}
-
-ANTI-FRAUD CHECKS:
-- Verify authentic TikTok UI (correct layout, colors, fonts)
-- Check screenshots are from the same TikTok post
-- Look for image manipulation signs
-
-Respond ONLY with valid JSON:
-{
-  "status": "approved" | "rejected" | "manual_review",
-  "confidence_score": 0-100,
-  "failed_reason": "reason if rejected/review, null if approved",
-  "detected_actions": {
-    "liked": true/false,
-    "saved": true/false,
-    "commented": true/false,
-    "followed": true/false
-  },
-  "matched_username": true/false,
-  "fraud_indicators": []
-}`;
-    }
+    // Build verification prompt
+    let verificationPrompt = "";
 
     if (taskType === "comment") {
-      // Comment-specific verification with expected text
-      verificationPrompt = `You are a TikTok comment verification AI. Analyze the screenshot.
+      // Enhanced comment-specific verification
+      verificationPrompt = `You are a TikTok screenshot verification AI. Your job is to verify that a specific comment was posted.
 
 TASK: Verify COMMENT action
-USER'S TIKTOK NAME: "${displayName}"
-${expectedComment ? `EXPECTED COMMENT TEXT: "${expectedComment}"` : ""}
+USER'S TIKTOK DISPLAY NAME: "${displayName}"
+USER'S TIKTOK USERNAME: "@${tiktokUsername}"
+EXPECTED COMMENT TEXT: "${expectedComment || 'Any comment from this user'}"
 
 ${customPrompt}
 
-VERIFICATION CRITERIA:
-1. Comment section must be visible
-2. A comment from EXACTLY "${displayName}" must appear
-${expectedComment ? `3. Comment text should match or be very similar to: "${expectedComment}"` : ""}
+CRITICAL VERIFICATION STEPS:
+1. Look for the comment section in the screenshot
+2. Find a comment posted by "${displayName}" OR "@${tiktokUsername}"
+3. If expected comment is provided, check if the text matches or is very similar to: "${expectedComment}"
 
-Allow minor variations:
-- Small typos or autocorrect changes
-- Missing/extra spaces
-- Minor punctuation differences
+MATCHING RULES FOR COMMENTS:
+- Exact match = 100% confidence
+- Minor differences (capitalization, punctuation, small typos) = 90% confidence
+- Same meaning but different wording = 70% confidence
+- No match found = 0% confidence
+
+LOOK FOR:
+- Username/display name in the comment section
+- The actual comment text
+- Reply indicators if it's a reply
+
+${expectedComment ? `
+EXPECTED COMMENT TO FIND: "${expectedComment}"
+The user should have posted this EXACT or VERY SIMILAR comment.
+` : ''}
 
 Respond ONLY with valid JSON:
 {
   "status": "approved" | "rejected" | "manual_review",
   "confidence_score": 0-100,
-  "failed_reason": "reason if rejected/review, null if approved",
+  "failed_reason": "reason if rejected, null if approved",
   "detected_actions": {
     "liked": false,
     "saved": false,
     "commented": true/false,
     "followed": false
   },
-  "matched_username": true/false,
-  "comment_matched": true/false,
+  "found_username": "the username found in comments or null",
+  "found_comment_text": "the exact comment text found or null",
+  "comment_match_percentage": 0-100,
+  "fraud_indicators": []
+}`;
+    } else if (taskType === "like") {
+      verificationPrompt = `You are a TikTok screenshot verification AI.
+
+TASK: Verify LIKE action
+
+${customPrompt}
+
+VERIFICATION CRITERIA:
+- The heart/like icon MUST be RED or PINK (filled state)
+- A white or outlined heart means NOT liked
+- Check for authentic TikTok UI
+
+Respond ONLY with valid JSON:
+{
+  "status": "approved" | "rejected" | "manual_review",
+  "confidence_score": 0-100,
+  "failed_reason": "reason if rejected, null if approved",
+  "detected_actions": {
+    "liked": true/false,
+    "saved": false,
+    "commented": false,
+    "followed": false
+  },
+  "heart_color": "red" | "white" | "unknown",
+  "fraud_indicators": []
+}`;
+    } else if (taskType === "save") {
+      verificationPrompt = `You are a TikTok screenshot verification AI.
+
+TASK: Verify SAVE action
+
+${customPrompt}
+
+VERIFICATION CRITERIA:
+- The bookmark/save icon MUST be YELLOW or GOLD (filled state)
+- A white or outlined bookmark means NOT saved
+- Check for authentic TikTok UI
+
+Respond ONLY with valid JSON:
+{
+  "status": "approved" | "rejected" | "manual_review",
+  "confidence_score": 0-100,
+  "failed_reason": "reason if rejected, null if approved",
+  "detected_actions": {
+    "liked": false,
+    "saved": true/false,
+    "commented": false,
+    "followed": false
+  },
+  "bookmark_color": "yellow" | "white" | "unknown",
+  "fraud_indicators": []
+}`;
+    } else {
+      // Combo tasks
+      verificationPrompt = `You are a TikTok screenshot verification AI.
+
+TASK: Verify ${taskType.toUpperCase()} action(s)
+REQUIRED ACTIONS: ${actionsToVerify.join(", ")}
+USER'S TIKTOK NAME: "${displayName}"
+
+${customPrompt}
+
+VERIFICATION CRITERIA:
+${actionsToVerify.includes("liked") ? "- LIKE: Heart icon MUST be RED/PINK (filled)" : ""}
+${actionsToVerify.includes("saved") ? "- SAVE: Bookmark icon MUST be YELLOW/GOLD (filled)" : ""}
+${actionsToVerify.includes("commented") ? `- COMMENT: Find a comment from "${displayName}"${expectedComment ? `. Expected: "${expectedComment}"` : ""}` : ""}
+${actionsToVerify.includes("followed") ? '- FOLLOW: Button must show "Following" state' : ""}
+
+Check all provided screenshots for these actions.
+
+Respond ONLY with valid JSON:
+{
+  "status": "approved" | "rejected" | "manual_review",
+  "confidence_score": 0-100,
+  "failed_reason": "reason if rejected, null if approved",
+  "detected_actions": {
+    "liked": true/false,
+    "saved": true/false,
+    "commented": true/false,
+    "followed": true/false
+  },
   "fraud_indicators": []
 }`;
     }
@@ -404,6 +414,7 @@ Respond ONLY with valid JSON:
 
     try {
       aiContent = await verifyWithLovableAI(content, verificationPrompt);
+      console.log("AI response:", aiContent);
     } catch (aiError) {
       console.error("Lovable AI error:", aiError);
       // If AI fails, flag for manual review
@@ -432,8 +443,6 @@ Respond ONLY with valid JSON:
       );
     }
 
-    console.log("AI response:", aiContent);
-
     // Parse AI response
     let verificationResult: any;
     try {
@@ -441,15 +450,41 @@ Respond ONLY with valid JSON:
       if (jsonMatch) {
         verificationResult = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error("No JSON found");
+        throw new Error("No JSON found in response");
       }
     } catch {
+      console.error("Failed to parse AI response:", aiContent);
       verificationResult = { 
         status: "manual_review", 
         confidence_score: 0, 
         failed_reason: "Unable to parse AI response",
         detected_actions: { liked: false, saved: false, commented: false, followed: false }
       };
+    }
+
+    console.log("Parsed verification result:", verificationResult);
+
+    // For comment tasks, apply stricter matching
+    if (taskType === "comment" && expectedComment) {
+      const foundComment = verificationResult.found_comment_text;
+      const matchPercentage = verificationResult.comment_match_percentage || 0;
+      
+      // If AI found a comment, do additional string matching
+      if (foundComment) {
+        const expectedNormalized = expectedComment.toLowerCase().trim().replace(/[^\w\s]/g, '');
+        const foundNormalized = foundComment.toLowerCase().trim().replace(/[^\w\s]/g, '');
+        
+        // Check if they're similar enough
+        const isSimilar = expectedNormalized.includes(foundNormalized.substring(0, 20)) || 
+                          foundNormalized.includes(expectedNormalized.substring(0, 20)) ||
+                          matchPercentage >= 70;
+        
+        if (isSimilar) {
+          verificationResult.detected_actions.commented = true;
+          verificationResult.confidence_score = Math.max(verificationResult.confidence_score || 0, 85);
+          verificationResult.status = "approved";
+        }
+      }
     }
 
     // Validate all required actions passed
@@ -463,31 +498,7 @@ Respond ONLY with valid JSON:
       const failedActions = actionsToVerify.filter(
         action => verificationResult.detected_actions?.[action] !== true
       );
-      verificationResult.failed_reason = `Failed to verify: ${failedActions.join(", ")}`;
-    }
-
-    // For follow tasks, initiate delayed verification
-    if (taskType === "follow" || (taskType === "combo_large" && verificationResult.detected_actions?.followed)) {
-      // Get advertiser's TikTok username
-      const { data: adData } = await supabase
-        .from("ads")
-        .select("creator_id")
-        .eq("id", adId)
-        .single();
-      
-      if (adData) {
-        const { data: advertiserProfile } = await supabase
-          .from("profiles")
-          .select("tiktok_username")
-          .eq("user_id", adData.creator_id)
-          .single();
-        
-        if (advertiserProfile) {
-          // For follow verification, we still approve but schedule a delay check
-          // The delay check will run separately and can revoke points if unfollow is detected
-          console.log("Follow task - scheduling delay verification");
-        }
-      }
+      verificationResult.failed_reason = `Could not verify: ${failedActions.join(", ")}. Please ensure your screenshot clearly shows the completed action.`;
     }
 
     // Determine approval based on status and confidence
@@ -502,7 +513,7 @@ Respond ONLY with valid JSON:
     verificationResult.approved = isApproved;
     verificationResult.confidence = verificationResult.confidence_score;
 
-    // Store submission with AI decision log
+    // Store submission
     const submissionStatus = isApproved ? "approved" : (needsReview ? "needs_review" : "rejected");
     
     await supabase
@@ -517,13 +528,14 @@ Respond ONLY with valid JSON:
           verified_at: new Date().toISOString(),
           task_type: taskType,
           required_actions: actionsToVerify,
+          expected_comment: expectedComment,
         },
         points_awarded: null,
       });
 
     // If approved, update points and notify user
     if (isApproved) {
-      const { data: adData } = await supabase.from("ads").select("points_per_task").eq("id", adId).single();
+      const { data: adData } = await supabase.from("ads").select("points_per_task, completed_count").eq("id", adId).single();
       const pointsToAward = adData?.points_per_task || 10;
 
       const { data: profile } = await supabase.from("profiles").select("tik_points").eq("user_id", userId).single();
@@ -531,11 +543,10 @@ Respond ONLY with valid JSON:
         await supabase.from("profiles").update({ tik_points: profile.tik_points + pointsToAward }).eq("user_id", userId);
       }
 
-      await supabase.from("task_submissions").update({ points_awarded: pointsToAward, status: "approved" }).eq("ad_id", adId).eq("user_id", userId);
+      await supabase.from("task_submissions").update({ points_awarded: pointsToAward }).eq("ad_id", adId).eq("user_id", userId);
 
-      const { data: currentAd } = await supabase.from("ads").select("completed_count").eq("id", adId).single();
-      if (currentAd) {
-        await supabase.from("ads").update({ completed_count: currentAd.completed_count + 1 }).eq("id", adId);
+      if (adData) {
+        await supabase.from("ads").update({ completed_count: (adData.completed_count || 0) + 1 }).eq("id", adId);
       }
 
       await supabase.from("transactions").insert({
@@ -546,7 +557,6 @@ Respond ONLY with valid JSON:
         reference_id: adId,
       });
 
-      // Create notification for user
       await supabase.from("notifications").insert({
         user_id: userId,
         type: "task_approved",
@@ -557,11 +567,10 @@ Respond ONLY with valid JSON:
 
       verificationResult.pointsAwarded = pointsToAward;
     } else if (submissionStatus === "rejected") {
-      // Notify user of rejection
       await supabase.from("notifications").insert({
         user_id: userId,
         type: "task_rejected",
-        title: "Task Rejected",
+        title: "Task Not Approved",
         message: `Your ${taskType} task was not approved. Reason: ${verificationResult.failed_reason || "Verification failed"}`,
         reference_id: adId,
       });
