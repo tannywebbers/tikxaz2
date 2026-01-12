@@ -12,7 +12,9 @@ import {
   Bookmark,
   UserPlus,
   Layers,
-  Loader2
+  Loader2,
+  Edit3,
+  Clock
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,10 +24,14 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { differenceInDays, format, addDays } from "date-fns";
 
 export function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isEditingDisplayName, setIsEditingDisplayName] = useState(false);
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [displayNameChangedAt, setDisplayNameChangedAt] = useState<Date | null>(null);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -50,9 +56,25 @@ export function ProfilePage() {
         email: profile.email || "",
         country: profile.country || "",
       });
+      setNewDisplayName(profile.tiktok_name || "");
     }
     fetchStats();
+    fetchDisplayNameChangedAt();
   }, [profile]);
+
+  const fetchDisplayNameChangedAt = async () => {
+    if (!user) return;
+    
+    const { data } = await supabase
+      .from("profiles")
+      .select("display_name_changed_at")
+      .eq("user_id", user.id)
+      .single();
+    
+    if (data?.display_name_changed_at) {
+      setDisplayNameChangedAt(new Date(data.display_name_changed_at));
+    }
+  };
 
   const fetchStats = async () => {
     if (!user) return;
@@ -88,6 +110,18 @@ export function ProfilePage() {
     }
   };
 
+  const canChangeDisplayName = () => {
+    if (!displayNameChangedAt) return true;
+    const daysSinceChange = differenceInDays(new Date(), displayNameChangedAt);
+    return daysSinceChange >= 7;
+  };
+
+  const getDaysUntilChange = () => {
+    if (!displayNameChangedAt) return 0;
+    const nextChangeDate = addDays(displayNameChangedAt, 7);
+    return Math.max(0, differenceInDays(nextChangeDate, new Date()));
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -108,6 +142,52 @@ export function ProfilePage() {
     } catch (error) {
       console.error("Error saving profile:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to save profile." });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDisplayNameUpdate = async () => {
+    if (!canChangeDisplayName()) {
+      toast({
+        variant: "destructive",
+        title: "Cannot change yet",
+        description: `You can change your display name in ${getDaysUntilChange()} days.`,
+      });
+      return;
+    }
+
+    if (!newDisplayName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Display name cannot be empty.",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          tiktok_name: newDisplayName.trim(),
+          display_name_changed_at: new Date().toISOString(),
+        })
+        .eq("user_id", user?.id);
+
+      if (error) throw error;
+
+      await refreshProfile();
+      setIsEditingDisplayName(false);
+      setDisplayNameChangedAt(new Date());
+      toast({ 
+        title: "Display Name Updated", 
+        description: "Your TikTok display name has been updated. You can change it again in 7 days." 
+      });
+    } catch (error) {
+      console.error("Error updating display name:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to update display name." });
     } finally {
       setIsSaving(false);
     }
@@ -193,36 +273,88 @@ export function ProfilePage() {
               TikTok Identity
             </CardTitle>
             <CardDescription>
-              This information is used for verification and cannot be changed.
+              Your TikTok identity is used for task verification.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Display Name - Editable every 7 days */}
             <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                TikTok Display Name
-                <Badge variant="warning" className="text-xs">Locked</Badge>
-              </Label>
-              <Input 
-                value={profile?.tiktok_name || "Not set"} 
-                disabled
-                className="bg-muted"
-              />
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  TikTok Display Name
+                  {canChangeDisplayName() ? (
+                    <Badge variant="outline" className="text-xs">Can change</Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-xs flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {getDaysUntilChange()}d cooldown
+                    </Badge>
+                  )}
+                </Label>
+                {!isEditingDisplayName && canChangeDisplayName() && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingDisplayName(true)}
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+              
+              {isEditingDisplayName ? (
+                <div className="flex gap-2">
+                  <Input 
+                    value={newDisplayName} 
+                    onChange={(e) => setNewDisplayName(e.target.value)}
+                    placeholder="Your TikTok display name"
+                  />
+                  <Button 
+                    size="sm" 
+                    onClick={handleDisplayNameUpdate}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditingDisplayName(false);
+                      setNewDisplayName(profile?.tiktok_name || "");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Input 
+                  value={profile?.tiktok_name || "Not set"} 
+                  disabled
+                  className="bg-muted"
+                />
+              )}
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
-                This must exactly match your TikTok profile display name for comment verification
+                Must exactly match your TikTok profile display name for comment verification. Can be changed once every 7 days.
               </p>
             </div>
 
+            {/* Username - Locked permanently */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 TikTok Username
-                <Badge variant="outline" className="text-xs">Reference</Badge>
+                <Badge variant="destructive" className="text-xs">Locked Forever</Badge>
               </Label>
               <Input 
                 value={`@${profile?.tiktok_username}`} 
                 disabled
                 className="bg-muted"
               />
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Username cannot be changed after registration.
+              </p>
             </div>
           </CardContent>
         </Card>

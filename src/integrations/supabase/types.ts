@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_settings: {
+        Row: {
+          ad_code: string | null
+          ad_type: string
+          created_at: string
+          id: string
+          is_enabled: boolean | null
+          placement: string | null
+          updated_at: string
+        }
+        Insert: {
+          ad_code?: string | null
+          ad_type: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          placement?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ad_code?: string | null
+          ad_type?: string
+          created_at?: string
+          id?: string
+          is_enabled?: boolean | null
+          placement?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ads: {
         Row: {
           comment_keywords: string[] | null
@@ -344,6 +374,7 @@ export type Database = {
           avatar_url: string | null
           country: string | null
           created_at: string
+          display_name_changed_at: string | null
           email: string
           first_name: string | null
           id: string
@@ -358,6 +389,7 @@ export type Database = {
           avatar_url?: string | null
           country?: string | null
           created_at?: string
+          display_name_changed_at?: string | null
           email: string
           first_name?: string | null
           id?: string
@@ -372,6 +404,7 @@ export type Database = {
           avatar_url?: string | null
           country?: string | null
           created_at?: string
+          display_name_changed_at?: string | null
           email?: string
           first_name?: string | null
           id?: string

@@ -189,9 +189,9 @@ serve(async (req) => {
     }
 
     // Main screenshot verification flow
-    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots, expectedComment } = requestBody;
+    const { adId, userId, taskType, tiktokName, tiktokUsername, screenshots, expectedComment, advertiserDisplayName } = requestBody;
 
-    console.log("Verifying task:", { adId, taskType, tiktokName, tiktokUsername, expectedComment, screenshotCount: screenshots?.length });
+    console.log("Verifying task:", { adId, taskType, tiktokName, tiktokUsername, expectedComment, advertiserDisplayName, screenshotCount: screenshots?.length });
 
     if (!screenshots || screenshots.length === 0) {
       return new Response(
@@ -223,24 +223,33 @@ serve(async (req) => {
       );
     }
 
-    // Check for existing submission for same ad
-    const { data: existingForAd } = await supabase
+    // Check for existing APPROVED submission for same ad (not just any submission)
+    const { data: existingApproved } = await supabase
       .from("task_submissions")
-      .select("id")
+      .select("id, status")
       .eq("user_id", userId)
       .eq("ad_id", adId)
+      .eq("status", "approved")
       .single();
     
-    if (existingForAd) {
+    if (existingApproved) {
       return new Response(
         JSON.stringify({ 
           approved: false, 
-          reason: "You have already submitted for this task",
+          reason: "You have already completed this task",
           status: "rejected"
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // Delete any previous rejected submissions so user can retry
+    await supabase
+      .from("task_submissions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("ad_id", adId)
+      .eq("status", "rejected");
 
     // Fetch admin-configured prompt for this task type
     const { data: promptData } = await supabase
@@ -252,6 +261,26 @@ serve(async (req) => {
 
     const confidenceThreshold = promptData?.confidence_threshold || 70;
     const displayName = tiktokName || tiktokUsername;
+
+    // Get advertiser's display name if not provided
+    let advertiserName = advertiserDisplayName;
+    if (!advertiserName) {
+      const { data: ad } = await supabase
+        .from("ads")
+        .select("creator_id")
+        .eq("id", adId)
+        .single();
+      
+      if (ad?.creator_id) {
+        const { data: advertiserProfile } = await supabase
+          .from("profiles")
+          .select("tiktok_name, tiktok_username")
+          .eq("user_id", ad.creator_id)
+          .single();
+        
+        advertiserName = advertiserProfile?.tiktok_name || advertiserProfile?.tiktok_username || null;
+      }
+    }
 
     // Determine required actions based on task type
     const requiredActions: Record<string, string[]> = {
@@ -266,40 +295,37 @@ serve(async (req) => {
     const actionsToVerify = requiredActions[taskType] || ["liked"];
     const customPrompt = promptData?.prompt_content || "";
 
-    // Build verification prompt
+    // Build verification prompt with advertiser name check
     let verificationPrompt = "";
 
     if (taskType === "comment") {
-      // Enhanced comment-specific verification
-      verificationPrompt = `You are a TikTok screenshot verification AI. Your job is to verify that a specific comment was posted.
+      verificationPrompt = `You are a TikTok screenshot verification AI. Your job is to verify that a specific comment was posted on a SPECIFIC video.
 
 TASK: Verify COMMENT action
 USER'S TIKTOK DISPLAY NAME: "${displayName}"
 USER'S TIKTOK USERNAME: "@${tiktokUsername}"
 EXPECTED COMMENT TEXT: "${expectedComment || 'Any comment from this user'}"
+${advertiserName ? `ADVERTISER'S DISPLAY NAME: "${advertiserName}" - This name MUST appear somewhere in the screenshot (as the video creator/poster)` : ''}
 
 ${customPrompt}
 
 CRITICAL VERIFICATION STEPS:
-1. Look for the comment section in the screenshot
-2. Find a comment posted by "${displayName}" OR "@${tiktokUsername}"
-3. If expected comment is provided, check if the text matches or is very similar to: "${expectedComment}"
+1. ${advertiserName ? `FIRST: Verify that the screenshot shows content from "${advertiserName}" - look for their name as the video poster/creator` : 'Identify the video being commented on'}
+2. Look for the comment section in the screenshot
+3. Find a comment posted by "${displayName}" OR "@${tiktokUsername}"
+4. If expected comment is provided, check if the text matches or is very similar to: "${expectedComment}"
+
+${advertiserName ? `
+ANTI-FRAUD CHECK:
+- The advertiser's name "${advertiserName}" MUST be visible in the screenshot as the content creator
+- If you cannot find "${advertiserName}" in the screenshot, REJECT with reason "Wrong video - advertiser name not found"
+` : ''}
 
 MATCHING RULES FOR COMMENTS:
 - Exact match = 100% confidence
 - Minor differences (capitalization, punctuation, small typos) = 90% confidence
 - Same meaning but different wording = 70% confidence
 - No match found = 0% confidence
-
-LOOK FOR:
-- Username/display name in the comment section
-- The actual comment text
-- Reply indicators if it's a reply
-
-${expectedComment ? `
-EXPECTED COMMENT TO FIND: "${expectedComment}"
-The user should have posted this EXACT or VERY SIMILAR comment.
-` : ''}
 
 Respond ONLY with valid JSON:
 {
@@ -315,19 +341,27 @@ Respond ONLY with valid JSON:
   "found_username": "the username found in comments or null",
   "found_comment_text": "the exact comment text found or null",
   "comment_match_percentage": 0-100,
+  "advertiser_name_found": true/false,
   "fraud_indicators": []
 }`;
     } else if (taskType === "like") {
       verificationPrompt = `You are a TikTok screenshot verification AI.
 
-TASK: Verify LIKE action
+TASK: Verify LIKE action on a SPECIFIC video
+${advertiserName ? `ADVERTISER'S DISPLAY NAME: "${advertiserName}" - This name MUST appear somewhere in the screenshot as the video creator` : ''}
 
 ${customPrompt}
 
-VERIFICATION CRITERIA:
-- The heart/like icon MUST be RED or PINK (filled state)
-- A white or outlined heart means NOT liked
-- Check for authentic TikTok UI
+CRITICAL VERIFICATION STEPS:
+1. ${advertiserName ? `FIRST: Verify that the screenshot shows content from "${advertiserName}" - their name must be visible as the video poster/creator` : 'Identify the video'}
+2. Check that the heart/like icon is RED or PINK (filled state)
+3. A white or outlined heart means NOT liked
+
+${advertiserName ? `
+ANTI-FRAUD CHECK:
+- The advertiser's name "${advertiserName}" MUST be visible in the screenshot
+- If you cannot find "${advertiserName}" as the video creator, REJECT with reason "Wrong video - advertiser name not found"
+` : ''}
 
 Respond ONLY with valid JSON:
 {
@@ -341,19 +375,27 @@ Respond ONLY with valid JSON:
     "followed": false
   },
   "heart_color": "red" | "white" | "unknown",
+  "advertiser_name_found": true/false,
   "fraud_indicators": []
 }`;
     } else if (taskType === "save") {
       verificationPrompt = `You are a TikTok screenshot verification AI.
 
-TASK: Verify SAVE action
+TASK: Verify SAVE action on a SPECIFIC video
+${advertiserName ? `ADVERTISER'S DISPLAY NAME: "${advertiserName}" - This name MUST appear somewhere in the screenshot as the video creator` : ''}
 
 ${customPrompt}
 
-VERIFICATION CRITERIA:
-- The bookmark/save icon MUST be YELLOW or GOLD (filled state)
-- A white or outlined bookmark means NOT saved
-- Check for authentic TikTok UI
+CRITICAL VERIFICATION STEPS:
+1. ${advertiserName ? `FIRST: Verify that the screenshot shows content from "${advertiserName}" - their name must be visible as the video poster/creator` : 'Identify the video'}
+2. Check that the bookmark/save icon is YELLOW or GOLD (filled state)
+3. A white or outlined bookmark means NOT saved
+
+${advertiserName ? `
+ANTI-FRAUD CHECK:
+- The advertiser's name "${advertiserName}" MUST be visible in the screenshot
+- If you cannot find "${advertiserName}" as the video creator, REJECT with reason "Wrong video - advertiser name not found"
+` : ''}
 
 Respond ONLY with valid JSON:
 {
@@ -367,23 +409,34 @@ Respond ONLY with valid JSON:
     "followed": false
   },
   "bookmark_color": "yellow" | "white" | "unknown",
+  "advertiser_name_found": true/false,
   "fraud_indicators": []
 }`;
     } else {
       // Combo tasks
       verificationPrompt = `You are a TikTok screenshot verification AI.
 
-TASK: Verify ${taskType.toUpperCase()} action(s)
+TASK: Verify ${taskType.toUpperCase()} action(s) on a SPECIFIC video
 REQUIRED ACTIONS: ${actionsToVerify.join(", ")}
 USER'S TIKTOK NAME: "${displayName}"
+${advertiserName ? `ADVERTISER'S DISPLAY NAME: "${advertiserName}" - This name MUST appear in the screenshots as the video/profile creator` : ''}
 
 ${customPrompt}
+
+CRITICAL VERIFICATION STEPS:
+1. ${advertiserName ? `FIRST: Verify that at least one screenshot shows content from "${advertiserName}"` : 'Identify the content'}
 
 VERIFICATION CRITERIA:
 ${actionsToVerify.includes("liked") ? "- LIKE: Heart icon MUST be RED/PINK (filled)" : ""}
 ${actionsToVerify.includes("saved") ? "- SAVE: Bookmark icon MUST be YELLOW/GOLD (filled)" : ""}
 ${actionsToVerify.includes("commented") ? `- COMMENT: Find a comment from "${displayName}"${expectedComment ? `. Expected: "${expectedComment}"` : ""}` : ""}
 ${actionsToVerify.includes("followed") ? '- FOLLOW: Button must show "Following" state' : ""}
+
+${advertiserName ? `
+ANTI-FRAUD CHECK:
+- The advertiser's name "${advertiserName}" MUST be visible in at least one screenshot
+- If you cannot find "${advertiserName}", REJECT with reason "Wrong video/profile - advertiser name not found"
+` : ''}
 
 Check all provided screenshots for these actions.
 
@@ -398,6 +451,7 @@ Respond ONLY with valid JSON:
     "commented": true/false,
     "followed": true/false
   },
+  "advertiser_name_found": true/false,
   "fraud_indicators": []
 }`;
     }
@@ -464,8 +518,15 @@ Respond ONLY with valid JSON:
 
     console.log("Parsed verification result:", verificationResult);
 
+    // CRITICAL: Check if advertiser name was found (anti-fraud)
+    if (advertiserName && verificationResult.advertiser_name_found === false) {
+      verificationResult.status = "rejected";
+      verificationResult.failed_reason = `Screenshot does not show content from "${advertiserName}". Please ensure you're performing the task on the correct video.`;
+      verificationResult.confidence_score = 0;
+    }
+
     // For comment tasks, apply stricter matching
-    if (taskType === "comment" && expectedComment) {
+    if (taskType === "comment" && expectedComment && verificationResult.advertiser_name_found !== false) {
       const foundComment = verificationResult.found_comment_text;
       const matchPercentage = verificationResult.comment_match_percentage || 0;
       
@@ -529,6 +590,7 @@ Respond ONLY with valid JSON:
           task_type: taskType,
           required_actions: actionsToVerify,
           expected_comment: expectedComment,
+          advertiser_name: advertiserName,
         },
         points_awarded: null,
       });
