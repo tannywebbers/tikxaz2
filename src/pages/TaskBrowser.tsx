@@ -139,13 +139,14 @@ export default function TaskBrowser() {
   const fetchTasks = async () => {
     setIsLoading(true);
     try {
-      // First, get tasks the user has already completed
-      const { data: completedSubmissions } = await supabase
+      // Get ONLY approved submissions - rejected ones should allow retry
+      const { data: approvedSubmissions } = await supabase
         .from("task_submissions")
         .select("ad_id")
-        .eq("user_id", user?.id);
+        .eq("user_id", user?.id)
+        .eq("status", "approved");
       
-      const completedAdIds = new Set(completedSubmissions?.map(s => s.ad_id) || []);
+      const approvedAdIds = new Set(approvedSubmissions?.map(s => s.ad_id) || []);
 
       let query = supabase
         .from("ads")
@@ -177,13 +178,13 @@ export default function TaskBrowser() {
 
       // Filter out:
       // 1. Tasks created by the user
-      // 2. Tasks that are fully completed
-      // 3. Tasks the user has already submitted (completed or pending)
+      // 2. Tasks that are fully completed (hit target)
+      // 3. Tasks the user has already APPROVED (not rejected - they can retry those)
       let filteredTasks = (data || []).filter(
         (task: any) => 
           task.creator_id !== user?.id && 
           task.completed_count < task.required_completions &&
-          !completedAdIds.has(task.id)
+          !approvedAdIds.has(task.id)
       );
 
       if (sortBy === "lowest_effort") {
@@ -376,6 +377,13 @@ export default function TaskBrowser() {
         }
       }
 
+      // Fetch advertiser's display name for verification
+      const { data: advertiserProfile } = await supabase
+        .from("profiles")
+        .select("tiktok_name, tiktok_username")
+        .eq("user_id", selectedTask.creator_id)
+        .single();
+
       const { data: verifyResult, error: verifyError } = await supabase.functions.invoke(
         "verify-screenshot",
         {
@@ -384,8 +392,10 @@ export default function TaskBrowser() {
             userId: user.id,
             taskType: selectedTask.task_type,
             tiktokName: profile?.tiktok_name || profile?.tiktok_username,
+            tiktokUsername: profile?.tiktok_username,
             screenshots: screenshotUrls,
-            expectedComment: generatedComment, // Pass the expected comment for verification
+            expectedComment: generatedComment,
+            advertiserDisplayName: advertiserProfile?.tiktok_name || advertiserProfile?.tiktok_username,
           },
         }
       );
