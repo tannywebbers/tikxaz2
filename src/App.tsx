@@ -28,6 +28,7 @@ import AdminPrompts from "./pages/admin/AdminPrompts";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminLandingCMS from "./pages/admin/AdminLandingCMS";
 import AdminEmailConfig from "./pages/admin/AdminEmailConfig";
+import AdminAdsSettings from "./pages/admin/AdminAdsSettings";
 
 const queryClient = new QueryClient();
 
@@ -67,9 +68,10 @@ const App = () => (
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="ai-config" element={<AdminAIConfig />} />
                 <Route path="prompts" element={<AdminPrompts />} />
-              <Route path="settings" element={<AdminSettings />} />
+                <Route path="settings" element={<AdminSettings />} />
                 <Route path="landing" element={<AdminLandingCMS />} />
                 <Route path="email" element={<AdminEmailConfig />} />
+                <Route path="ads" element={<AdminAdsSettings />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
