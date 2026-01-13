@@ -65,7 +65,7 @@ serve(async (req) => {
       return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=missing_metadata`, 302);
     }
 
-    // Check if this transaction was already processed
+    // Check if this transaction was already processed (by webhook)
     const { data: existingTx, error: txCheckError } = await supabase
       .from("transactions")
       .select("id")
@@ -76,10 +76,14 @@ serve(async (req) => {
       console.error("Error checking existing transaction:", txCheckError);
     }
 
+    // If already processed by webhook, just redirect to success
     if (existingTx) {
-      console.log("Transaction already processed, redirecting to success");
-      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=success&already_processed=true`, 302);
+      console.log("Transaction already processed by webhook, redirecting to success");
+      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=success&points=${points}`, 302);
     }
+
+    // If webhook hasn't processed it yet, process it here (fallback)
+    console.log("Webhook hasn't processed yet, processing as fallback...");
 
     // Get current user points
     const { data: profile, error: profileError } = await supabase
@@ -131,7 +135,7 @@ serve(async (req) => {
       message: `You successfully purchased ${pointsToAdd} TikPoints.`,
     });
 
-    console.log("Payment processed successfully!");
+    console.log("Payment processed successfully via callback fallback!");
 
     // Redirect to wallet with success
     return Response.redirect(`${APP_URL}/dashboard/wallet?payment=success&points=${pointsToAdd}`, 302);
