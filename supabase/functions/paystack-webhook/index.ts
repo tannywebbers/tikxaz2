@@ -78,80 +78,42 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Check if this transaction was already processed
-    const { data: existingTx } = await supabase
-      .from("transactions")
-      .select("id")
-      .eq("reference_id", reference)
-      .maybeSingle();
-
-    if (existingTx) {
-      console.log("Transaction already processed:", reference);
-      return new Response(
-        JSON.stringify({ received: true, already_processed: true }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Get current user points
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("tik_points")
-      .eq("user_id", user_id)
-      .single();
-
-    if (profileError) {
-      console.error("Error fetching profile:", profileError);
-      return new Response(
-        JSON.stringify({ error: "User not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
+    // Atomic + idempotent crediting by reference
     const pointsToAdd = parseInt(points);
-    const newBalance = (profile?.tik_points || 0) + pointsToAdd;
-
-    console.log("Updating points:", { currentBalance: profile?.tik_points, pointsToAdd, newBalance });
-
-    // Update user's points
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ tik_points: newBalance })
-      .eq("user_id", user_id);
-
-    if (updateError) {
-      console.error("Error updating points:", updateError);
+    if (!Number.isFinite(pointsToAdd) || pointsToAdd <= 0) {
+      console.error("Invalid points:", points);
       return new Response(
-        JSON.stringify({ error: "Failed to update points" }),
+        JSON.stringify({ error: "Invalid points" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const { data: creditResult, error: creditError } = await supabase.rpc(
+      "credit_purchase_points",
+      {
+        _user_id: user_id,
+        _points: pointsToAdd,
+        _amount_paid: amountPaid,
+        _reference: reference,
+      }
+    );
+
+    if (creditError) {
+      console.error("Error crediting purchase points:", creditError);
+      return new Response(
+        JSON.stringify({ error: "Failed to process purchase" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Log transaction
-    const { error: txError } = await supabase.from("transactions").insert({
-      user_id,
-      amount: pointsToAdd,
-      type: "purchase",
-      description: `Purchased ${pointsToAdd} TikPoints for ₦${amountPaid}`,
-      reference_id: reference,
-    });
+    console.log("credit_purchase_points result:", creditResult);
 
-    if (txError) {
-      console.error("Error logging transaction:", txError);
-    }
-
-    // Create notification
-    await supabase.from("notifications").insert({
-      user_id,
-      type: "purchase",
-      title: "Points Purchased!",
-      message: `You successfully purchased ${pointsToAdd} TikPoints.`,
-    });
+    const alreadyProcessed = Boolean((creditResult as any)?.already_processed);
 
     console.log("Webhook processed successfully!");
 
     return new Response(
-      JSON.stringify({ received: true, success: true }),
+      JSON.stringify({ received: true, success: true, already_processed: alreadyProcessed }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

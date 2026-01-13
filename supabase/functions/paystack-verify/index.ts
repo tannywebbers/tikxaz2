@@ -65,80 +65,35 @@ serve(async (req) => {
       return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=missing_metadata`, 302);
     }
 
-    // Check if this transaction was already processed (by webhook)
-    const { data: existingTx, error: txCheckError } = await supabase
-      .from("transactions")
-      .select("id")
-      .eq("reference_id", reference)
-      .maybeSingle();
-
-    if (txCheckError) {
-      console.error("Error checking existing transaction:", txCheckError);
-    }
-
-    // If already processed by webhook, just redirect to success
-    if (existingTx) {
-      console.log("Transaction already processed by webhook, redirecting to success");
-      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=success&points=${points}`, 302);
-    }
-
-    // If webhook hasn't processed it yet, process it here (fallback)
-    console.log("Webhook hasn't processed yet, processing as fallback...");
-
-    // Get current user points
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("tik_points")
-      .eq("user_id", user_id)
-      .single();
-
-    if (profileError) {
-      console.error("Error fetching profile:", profileError);
-      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=profile_not_found`, 302);
-    }
-
+    // Credit points + create transaction + notification atomically (idempotent by reference)
     const pointsToAdd = parseInt(points);
-    const newBalance = (profile?.tik_points || 0) + pointsToAdd;
-
-    console.log("Updating points:", { currentBalance: profile?.tik_points, pointsToAdd, newBalance });
-
-    // Update user's points
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({ tik_points: newBalance })
-      .eq("user_id", user_id);
-
-    if (updateError) {
-      console.error("Error updating points:", updateError);
-      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=update_failed`, 302);
+    if (!Number.isFinite(pointsToAdd) || pointsToAdd <= 0) {
+      console.error("Invalid points:", points);
+      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=invalid_points`, 302);
     }
 
-    // Log transaction
-    const { error: txError } = await supabase.from("transactions").insert({
-      user_id,
-      amount: pointsToAdd,
-      type: "purchase",
-      description: `Purchased ${pointsToAdd} TikPoints for ₦${amountPaid}`,
-      reference_id: reference,
-    });
+    const { data: creditResult, error: creditError } = await supabase.rpc(
+      "credit_purchase_points",
+      {
+        _user_id: user_id,
+        _points: pointsToAdd,
+        _amount_paid: amountPaid,
+        _reference: reference,
+      }
+    );
 
-    if (txError) {
-      console.error("Error logging transaction:", txError);
-      // Don't fail the whole thing, points were already added
+    if (creditError) {
+      console.error("Error crediting purchase points:", creditError);
+      return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=credit_failed`, 302);
     }
 
-    // Create notification
-    await supabase.from("notifications").insert({
-      user_id,
-      type: "purchase",
-      title: "Points Purchased!",
-      message: `You successfully purchased ${pointsToAdd} TikPoints.`,
-    });
+    const alreadyProcessed = Boolean((creditResult as any)?.already_processed);
+    console.log("credit_purchase_points result:", creditResult);
 
-    console.log("Payment processed successfully via callback fallback!");
-
-    // Redirect to wallet with success
-    return Response.redirect(`${APP_URL}/dashboard/wallet?payment=success&points=${pointsToAdd}`, 302);
+    return Response.redirect(
+      `${APP_URL}/dashboard/wallet?payment=success&points=${pointsToAdd}&already_processed=${alreadyProcessed}`,
+      302
+    );
   } catch (error) {
     console.error("Error processing payment:", error);
     return Response.redirect(`${APP_URL}/dashboard/wallet?payment=error&reason=exception`, 302);
