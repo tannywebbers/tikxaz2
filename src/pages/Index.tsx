@@ -8,6 +8,9 @@ import { PricingSection } from "@/components/landing/PricingSection";
 import { Footer } from "@/components/landing/Footer";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { AdBanner } from "@/components/ads/AdBanner";
+import { AdPopup } from "@/components/ads/AdPopup";
+import { SocialBar } from "@/components/ads/SocialBar";
 
 interface SiteSettings {
   site_name?: string;
@@ -81,12 +84,32 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
+      
+      {/* Top Banner Ad */}
+      <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/50" />
+      
       <HeroSection />
       <StatsSection />
+      
+      {/* Native/In-Content Ad */}
+      <AdBanner adType="native_feed" className="max-w-4xl mx-auto px-4 py-6" />
+      
       <HowItWorks />
       <FeaturesSection />
       <PricingSection />
+      
+      {/* Bottom Banner Ad */}
+      <AdBanner adType="banner_bottom" className="w-full flex justify-center py-4 bg-muted/50" />
+      
       <Footer />
+      
+      {/* Popup/Popunder Ads */}
+      <AdPopup adType="popup" />
+      <AdPopup adType="popunder" />
+      <AdPopup adType="interstitial" />
+      
+      {/* Social Bar */}
+      <SocialBar />
     </div>
   );
 };
