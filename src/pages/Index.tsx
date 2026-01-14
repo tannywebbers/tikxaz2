@@ -85,30 +85,26 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      {/* Top Banner Ad */}
-      <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/50" />
+      {/* Top Banner Ad - 728x90 Leaderboard */}
+      <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/30" />
       
       <HeroSection />
       <StatsSection />
-      
-      {/* Native/In-Content Ad */}
-      <AdBanner adType="native_feed" className="max-w-4xl mx-auto px-4 py-6" />
-      
       <HowItWorks />
       <FeaturesSection />
       <PricingSection />
       
-      {/* Bottom Banner Ad */}
-      <AdBanner adType="banner_bottom" className="w-full flex justify-center py-4 bg-muted/50" />
+      {/* Bottom Banner Ad - 728x90 Leaderboard or 320x50 Mobile */}
+      <AdBanner adType="banner_bottom" className="w-full flex justify-center py-4 bg-muted/30" />
       
       <Footer />
       
-      {/* Popup/Popunder Ads */}
+      {/* Popup/Popunder Ads - Triggered once per session */}
       <AdPopup adType="popup" />
       <AdPopup adType="popunder" />
       <AdPopup adType="interstitial" />
       
-      {/* Social Bar */}
+      {/* Social Bar - Floating notification style */}
       <SocialBar />
     </div>
   );

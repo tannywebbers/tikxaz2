@@ -30,54 +30,79 @@ interface AdSetting {
   placement: string;
 }
 
-const adTypeInfo: Record<string, { label: string; description: string; icon: React.ElementType; color: string }> = {
+interface AdTypeConfig {
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  recommendedSize: string;
+  sizeHint: string;
+}
+
+const adTypeInfo: Record<string, AdTypeConfig> = {
   banner_top: { 
     label: "Banner Top", 
     description: "Horizontal banner at the top of pages", 
     icon: Square,
-    color: "text-blue-400"
+    color: "text-blue-400",
+    recommendedSize: "728×90 or 970×90",
+    sizeHint: "Leaderboard or Large Leaderboard format. Full width on desktop."
   },
   banner_bottom: { 
     label: "Banner Bottom", 
     description: "Horizontal banner at the bottom of pages", 
     icon: Square,
-    color: "text-green-400"
+    color: "text-green-400",
+    recommendedSize: "728×90 or 320×50",
+    sizeHint: "Leaderboard on desktop, Mobile Banner on mobile devices."
   },
   banner_sidebar: { 
     label: "Banner Sidebar", 
     description: "Vertical banner in sidebar areas", 
     icon: Layers,
-    color: "text-purple-400"
+    color: "text-purple-400",
+    recommendedSize: "300×250 or 160×600",
+    sizeHint: "Medium Rectangle or Wide Skyscraper. Best for sidebar placement."
   },
   native_feed: { 
     label: "Native Feed", 
-    description: "Ads that blend into content feeds", 
+    description: "Ads that blend into content feeds between cards", 
     icon: LayoutGrid,
-    color: "text-yellow-400"
+    color: "text-yellow-400",
+    recommendedSize: "300×250 or Responsive",
+    sizeHint: "Flexible size that adapts to container. Shows between task cards."
   },
   popup: { 
     label: "Popup", 
     description: "Modal popup ads (use sparingly)", 
     icon: MessageSquare,
-    color: "text-orange-400"
+    color: "text-orange-400",
+    recommendedSize: "800×600 or 550×480",
+    sizeHint: "Center screen popup. Triggers after 3 seconds on page load."
   },
   popunder: { 
     label: "Popunder", 
     description: "Opens in background tab", 
     icon: ExternalLink,
-    color: "text-red-400"
+    color: "text-red-400",
+    recommendedSize: "Any (opens new tab)",
+    sizeHint: "Opens in background. Uses Adsterra's popunder script."
   },
   social_bar: { 
     label: "Social Bar", 
     description: "Floating social-style notification ads", 
     icon: Megaphone,
-    color: "text-pink-400"
+    color: "text-pink-400",
+    recommendedSize: "Fixed by Adsterra",
+    sizeHint: "Floating notification-style bar. Position handled by Adsterra."
   },
   interstitial: { 
     label: "Interstitial", 
     description: "Full-screen ads between page loads", 
     icon: Square,
-    color: "text-cyan-400"
+    color: "text-cyan-400",
+    recommendedSize: "Full Screen",
+    sizeHint: "Covers entire viewport. Use very sparingly to avoid frustrating users."
   },
 };
 
@@ -193,7 +218,9 @@ export default function AdminAdsSettings() {
             label: ad.ad_type, 
             description: "Ad placement", 
             icon: Square,
-            color: "text-neutral-400"
+            color: "text-neutral-400",
+            recommendedSize: "Variable",
+            sizeHint: "Check Adsterra for available sizes."
           };
           const Icon = info.icon;
           const isExpanded = expandedAd === ad.ad_type;
@@ -239,6 +266,17 @@ export default function AdminAdsSettings() {
               
               {isExpanded && (
                 <CardContent className="space-y-4 border-t border-neutral-800 pt-4">
+                  {/* Size Guidance */}
+                  <div className="p-3 rounded-lg bg-neutral-800/50 border border-neutral-700">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium text-neutral-300">Recommended Size:</span>
+                      <Badge variant="outline" className="text-primary border-primary/30 text-xs">
+                        {info.recommendedSize}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-neutral-500">{info.sizeHint}</p>
+                  </div>
+
                   <div className="space-y-2">
                     <Label className="text-neutral-300">Ad Code (Script)</Label>
                     <Textarea
@@ -253,13 +291,14 @@ export default function AdminAdsSettings() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-neutral-300">Placement</Label>
+                    <Label className="text-neutral-300">Placement Note</Label>
                     <Input
                       value={ad.placement}
                       onChange={(e) => updateAdSetting(ad.ad_type, "placement", e.target.value)}
                       className="bg-neutral-800 border-neutral-700 text-neutral-100"
-                      placeholder="e.g., header, footer, sidebar"
+                      placeholder="e.g., header, footer, sidebar (for your reference)"
                     />
+                    <p className="text-xs text-neutral-500">Optional note for your own reference</p>
                   </div>
                 </CardContent>
               )}

@@ -45,6 +45,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { NativeAdCard } from "@/components/ads/NativeAdCard";
 
 type TaskType = "like" | "comment" | "save" | "watch" | "follow" | "combo_mini" | "combo_large" | "all";
 type SortOption = "recent" | "trending" | "highest_reward" | "lowest_effort";
@@ -610,48 +611,63 @@ export default function TaskBrowser() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
             {tasks.map((task, index) => (
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card variant="interactive" className="h-full">
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent" />
-                        <div>
-                          <p className="font-medium capitalize">{task.task_type.replace("_", " ")} Task</p>
-                          <p className="text-xs text-muted-foreground">
-                            {task.required_completions - task.completed_count} spots left
-                          </p>
+              <>
+                <motion.div
+                  key={task.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Card variant="interactive" className="h-full">
+                    <CardContent className="p-5">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent" />
+                          <div>
+                            <p className="font-medium capitalize">{task.task_type.replace("_", " ")} Task</p>
+                            <p className="text-xs text-muted-foreground">
+                              {task.required_completions - task.completed_count} spots left
+                            </p>
+                          </div>
                         </div>
+                        <TaskIcon type={task.task_type} />
                       </div>
-                      <TaskIcon type={task.task_type} />
-                    </div>
 
-                    <div className="flex items-center justify-between mb-4">
-                      <Badge variant="gradient" className="gap-1">
-                        <Coins className="w-3 h-3" />
-                        +{task.points_per_task} pts
-                      </Badge>
-                      <Badge variant="outline" className="capitalize">
-                        {taskTypeConfig[task.task_type]?.label || task.task_type}
-                      </Badge>
-                    </div>
+                      <div className="flex items-center justify-between mb-4">
+                        <Badge variant="gradient" className="gap-1">
+                          <Coins className="w-3 h-3" />
+                          +{task.points_per_task} pts
+                        </Badge>
+                        <Badge variant="outline" className="capitalize">
+                          {taskTypeConfig[task.task_type]?.label || task.task_type}
+                        </Badge>
+                      </div>
 
-                    <Button
-                      variant="gradient"
-                      className="w-full"
-                      onClick={() => setSelectedTask(task)}
-                    >
-                      Start Task
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                      <Button
+                        variant="gradient"
+                        className="w-full"
+                        onClick={() => setSelectedTask(task)}
+                      >
+                        Start Task
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+                
+                {/* Insert native ad after every 4th card */}
+                {(index + 1) % 4 === 0 && index < tasks.length - 1 && (
+                  <motion.div
+                    key={`native-ad-${index}`}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ delay: (index + 1) * 0.05 }}
+                  >
+                    <NativeAdCard className="h-full min-h-[200px]" />
+                  </motion.div>
+                )}
+              </>
             ))}
           </AnimatePresence>
         </div>
