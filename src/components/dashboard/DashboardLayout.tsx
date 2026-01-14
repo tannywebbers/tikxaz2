@@ -207,16 +207,13 @@ export function DashboardLayout() {
 
         {/* Page Content */}
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
-          {/* Top Banner Ad in Dashboard */}
+          {/* Top Banner Ad in Dashboard - Leaderboard format */}
           <AdBanner adType="banner_top" className="w-full flex justify-center mb-4" />
           
           <Outlet />
           
-          {/* Native Feed Ad */}
-          <AdBanner adType="native_feed" className="w-full flex justify-center mt-6" />
-          
-          {/* Bottom Banner Ad */}
-          <AdBanner adType="banner_bottom" className="w-full flex justify-center mt-4" />
+          {/* Bottom Banner Ad - Leaderboard format */}
+          <AdBanner adType="banner_bottom" className="w-full flex justify-center mt-6" />
         </main>
         
         {/* Popup Ads - Only show once per session */}
