@@ -10,47 +10,61 @@ export function AdBanner({ adType, className = "" }: AdBannerProps) {
   const [adCode, setAdCode] = useState<string | null>(null);
   const [isEnabled, setIsEnabled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     fetchAdSettings();
   }, [adType]);
 
   useEffect(() => {
-    if (adCode && isEnabled && containerRef.current) {
+    if (adCode && isEnabled && containerRef.current && !isLoaded) {
       // Clear previous content
       containerRef.current.innerHTML = "";
       
-      // Create a container for the ad
-      const adContainer = document.createElement("div");
-      adContainer.innerHTML = adCode;
+      // Parse and execute the ad code
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = adCode;
       
-      // Execute any scripts in the ad code
-      const scripts = adContainer.querySelectorAll("script");
+      // Find all scripts
+      const scripts = tempDiv.querySelectorAll("script");
+      const nonScriptContent: Node[] = [];
+      
+      // Clone non-script elements
+      tempDiv.childNodes.forEach((node) => {
+        if (node.nodeName !== "SCRIPT") {
+          nonScriptContent.push(node.cloneNode(true));
+        }
+      });
+      
+      // Append non-script content first (like divs with IDs that scripts target)
+      nonScriptContent.forEach((node) => {
+        containerRef.current?.appendChild(node);
+      });
+      
+      // Execute scripts in order
       scripts.forEach((script) => {
         const newScript = document.createElement("script");
+        
+        // Copy all attributes
+        Array.from(script.attributes).forEach((attr) => {
+          newScript.setAttribute(attr.name, attr.value);
+        });
+        
+        // Handle inline script content vs src
         if (script.src) {
           newScript.src = script.src;
           newScript.async = true;
-        } else {
+        } else if (script.textContent) {
           newScript.textContent = script.textContent;
         }
-        // Copy attributes
-        Array.from(script.attributes).forEach((attr) => {
-          if (attr.name !== "src") {
-            newScript.setAttribute(attr.name, attr.value);
-          }
-        });
-        containerRef.current?.appendChild(newScript);
+        
+        // Append to document body for proper execution context
+        document.body.appendChild(newScript);
       });
       
-      // Append non-script content
-      const nonScriptContent = adContainer.cloneNode(true) as HTMLElement;
-      nonScriptContent.querySelectorAll("script").forEach((s) => s.remove());
-      if (nonScriptContent.innerHTML.trim()) {
-        containerRef.current.appendChild(nonScriptContent);
-      }
+      setIsLoaded(true);
     }
-  }, [adCode, isEnabled]);
+  }, [adCode, isEnabled, isLoaded]);
 
   const fetchAdSettings = async () => {
     try {

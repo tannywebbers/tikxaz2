@@ -17,6 +17,9 @@ import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationsDropdown } from "./NotificationsDropdown";
+import { AdBanner } from "@/components/ads/AdBanner";
+import { AdPopup } from "@/components/ads/AdPopup";
+import { SocialBar } from "@/components/ads/SocialBar";
 
 const navItems = [
   { icon: LayoutGrid, label: "Dashboard", href: "/dashboard" },
@@ -204,8 +207,24 @@ export function DashboardLayout() {
 
         {/* Page Content */}
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
+          {/* Top Banner Ad in Dashboard */}
+          <AdBanner adType="banner_top" className="w-full flex justify-center mb-4" />
+          
           <Outlet />
+          
+          {/* Native Feed Ad */}
+          <AdBanner adType="native_feed" className="w-full flex justify-center mt-6" />
+          
+          {/* Bottom Banner Ad */}
+          <AdBanner adType="banner_bottom" className="w-full flex justify-center mt-4" />
         </main>
+        
+        {/* Popup Ads - Only show once per session */}
+        <AdPopup adType="popup" />
+        <AdPopup adType="popunder" />
+        
+        {/* Social Bar */}
+        <SocialBar />
       </div>
     </div>
   );

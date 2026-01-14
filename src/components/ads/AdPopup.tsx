@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface AdPopupProps {
@@ -8,11 +8,16 @@ interface AdPopupProps {
 
 export function AdPopup({ adType, showOnce = true }: AdPopupProps) {
   const [hasShown, setHasShown] = useState(false);
+  const hasExecutedRef = useRef(false);
 
   useEffect(() => {
     // Check if already shown in this session
     const storageKey = `ad_shown_${adType}`;
     if (showOnce && sessionStorage.getItem(storageKey)) {
+      return;
+    }
+
+    if (hasExecutedRef.current) {
       return;
     }
 
@@ -28,26 +33,35 @@ export function AdPopup({ adType, showOnce = true }: AdPopupProps) {
           return;
         }
 
-        // Execute the ad script
-        const script = document.createElement("script");
-        const scriptMatch = data.ad_code.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+        hasExecutedRef.current = true;
+
+        // Parse and execute the ad script
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = data.ad_code;
         
-        if (scriptMatch) {
-          // Check for src attribute
-          const srcMatch = data.ad_code.match(/src=["']([^"']+)["']/);
-          if (srcMatch) {
-            script.src = srcMatch[1];
-            script.async = true;
-          } else {
-            script.textContent = scriptMatch[1];
+        const scripts = tempDiv.querySelectorAll("script");
+        
+        scripts.forEach((script) => {
+          const newScript = document.createElement("script");
+          
+          // Copy all attributes
+          Array.from(script.attributes).forEach((attr) => {
+            newScript.setAttribute(attr.name, attr.value);
+          });
+          
+          if (script.src) {
+            newScript.src = script.src;
+            newScript.async = true;
+          } else if (script.textContent) {
+            newScript.textContent = script.textContent;
           }
           
-          document.body.appendChild(script);
-          
-          setHasShown(true);
-          if (showOnce) {
-            sessionStorage.setItem(storageKey, "true");
-          }
+          document.body.appendChild(newScript);
+        });
+        
+        setHasShown(true);
+        if (showOnce) {
+          sessionStorage.setItem(storageKey, "true");
         }
       } catch (error) {
         console.error("Error loading popup ad:", error);
