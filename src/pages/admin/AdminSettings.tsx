@@ -7,7 +7,8 @@ import {
   Mail,
   Shield,
   Eye,
-  EyeOff
+  EyeOff,
+  Coins
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,12 @@ interface EmailVerificationSettings {
   require_verification: boolean;
 }
 
+interface PricingSettings {
+  points_amount: number;
+  currency_amount: number;
+  currency_symbol: string;
+}
+
 export default function AdminSettings() {
   const [taskSettings, setTaskSettings] = useState<PlatformSettings>({
     pointsPerLike: 10,
@@ -56,6 +63,11 @@ export default function AdminSettings() {
   const [emailSettings, setEmailSettings] = useState<EmailVerificationSettings>({
     enabled: false,
     require_verification: false,
+  });
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>({
+    points_amount: 10,
+    currency_amount: 5,
+    currency_symbol: "₦",
   });
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   
@@ -106,6 +118,18 @@ export default function AdminSettings() {
         setEmailSettings(prev => ({ ...prev, ...savedEmail }));
       }
 
+      // Fetch pricing settings
+      const { data: pricingData } = await supabase
+        .from("platform_settings")
+        .select("*")
+        .eq("key", "pricing_settings")
+        .maybeSingle();
+
+      if (pricingData && typeof pricingData.value === 'object' && pricingData.value !== null) {
+        const savedPricing = pricingData.value as unknown as PricingSettings;
+        setPricingSettings(prev => ({ ...prev, ...savedPricing }));
+      }
+
       // Check if SMTP is configured
       const { data: smtpData } = await supabase
         .from("smtp_config")
@@ -148,6 +172,7 @@ export default function AdminSettings() {
         saveSetting("task_points", taskSettings),
         saveSetting("site_settings", siteSettings),
         saveSetting("email_verification", emailSettings),
+        saveSetting("pricing_settings", pricingSettings),
       ]);
 
       toast({ title: "Saved", description: "All settings updated successfully." });
@@ -162,7 +187,7 @@ export default function AdminSettings() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -170,20 +195,80 @@ export default function AdminSettings() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-100">Platform Settings</h1>
-        <p className="text-sm text-neutral-500 mt-1">Configure platform-wide settings</p>
+        <h1 className="text-2xl font-semibold">Platform Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">Configure platform-wide settings</p>
       </div>
 
+      {/* Points Pricing Settings */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Coins className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>Points Pricing</CardTitle>
+              <CardDescription>
+                Set the exchange rate for purchasing points
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="p-4 rounded-lg bg-muted/50 border border-border">
+            <p className="text-sm text-muted-foreground mb-4">
+              Define how many points users get for their money. Example: 10 points = ₦5
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2">
+                <Label>Points Amount</Label>
+                <Input
+                  type="number"
+                  value={pricingSettings.points_amount}
+                  onChange={(e) => setPricingSettings({ ...pricingSettings, points_amount: parseInt(e.target.value) || 1 })}
+                  min={1}
+                />
+              </div>
+              <div className="flex items-center justify-center text-2xl font-bold text-muted-foreground">
+                =
+              </div>
+              <div className="space-y-2">
+                <Label>Currency Amount</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={pricingSettings.currency_symbol}
+                    onChange={(e) => setPricingSettings({ ...pricingSettings, currency_symbol: e.target.value })}
+                    className="w-16"
+                    placeholder="₦"
+                  />
+                  <Input
+                    type="number"
+                    value={pricingSettings.currency_amount}
+                    onChange={(e) => setPricingSettings({ ...pricingSettings, currency_amount: parseInt(e.target.value) || 1 })}
+                    min={1}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              Rate: {pricingSettings.points_amount} points = {pricingSettings.currency_symbol}{pricingSettings.currency_amount}
+              {" "}({(pricingSettings.points_amount / pricingSettings.currency_amount).toFixed(2)} points per {pricingSettings.currency_symbol}1)
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Site Settings */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <Globe className="w-5 h-5 text-blue-400" />
+              <Globe className="w-5 h-5 text-blue-500" />
             </div>
             <div>
-              <CardTitle className="text-neutral-100">Site Settings</CardTitle>
-              <CardDescription className="text-neutral-500">
+              <CardTitle>Site Settings</CardTitle>
+              <CardDescription>
                 Basic site configuration
               </CardDescription>
             </div>
@@ -192,38 +277,35 @@ export default function AdminSettings() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-neutral-300">Site Name</Label>
+              <Label>Site Name</Label>
               <Input
                 value={siteSettings.site_name}
                 onChange={(e) => setSiteSettings({ ...siteSettings, site_name: e.target.value })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
                 placeholder="TikPoints"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-300">Support Email</Label>
+              <Label>Support Email</Label>
               <Input
                 type="email"
                 value={siteSettings.support_email}
                 onChange={(e) => setSiteSettings({ ...siteSettings, support_email: e.target.value })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
                 placeholder="support@tikpoints.com"
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label className="text-neutral-300">Site Logo URL</Label>
+            <Label>Site Logo URL</Label>
             <Input
               value={siteSettings.site_logo}
               onChange={(e) => setSiteSettings({ ...siteSettings, site_logo: e.target.value })}
-              className="bg-neutral-800 border-neutral-700 text-neutral-100"
               placeholder="https://..."
             />
           </div>
           <div className="flex items-center justify-between pt-2">
             <div className="space-y-0.5">
-              <Label className="text-neutral-300">Maintenance Mode</Label>
-              <p className="text-xs text-neutral-500">Disable site access for regular users</p>
+              <Label>Maintenance Mode</Label>
+              <p className="text-xs text-muted-foreground">Disable site access for regular users</p>
             </div>
             <Switch
               checked={siteSettings.maintenance_mode}
@@ -234,15 +316,15 @@ export default function AdminSettings() {
       </Card>
 
       {/* Email Verification Settings */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-green-400" />
+              <Mail className="w-5 h-5 text-green-500" />
             </div>
             <div>
-              <CardTitle className="text-neutral-100">Email Verification</CardTitle>
-              <CardDescription className="text-neutral-500">
+              <CardTitle>Email Verification</CardTitle>
+              <CardDescription>
                 Configure email verification for new signups
               </CardDescription>
             </div>
@@ -250,12 +332,12 @@ export default function AdminSettings() {
         </CardHeader>
         <CardContent className="space-y-4">
           {!smtpConfigured && (
-            <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-              <div className="flex items-center gap-2 text-yellow-400 text-sm font-medium mb-1">
+            <div className="p-4 rounded-lg bg-warning/10 border border-warning/20">
+              <div className="flex items-center gap-2 text-warning text-sm font-medium mb-1">
                 <Shield className="w-4 h-4" />
                 SMTP Not Configured
               </div>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-muted-foreground">
                 Configure SMTP settings in Email Config before enabling email verification.
               </p>
             </div>
@@ -263,8 +345,8 @@ export default function AdminSettings() {
           
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label className="text-neutral-300">Enable Email Verification</Label>
-              <p className="text-xs text-neutral-500">Send verification code when users sign up</p>
+              <Label>Enable Email Verification</Label>
+              <p className="text-xs text-muted-foreground">Send verification code when users sign up</p>
             </div>
             <Switch
               checked={emailSettings.enabled}
@@ -274,10 +356,10 @@ export default function AdminSettings() {
           </div>
 
           {emailSettings.enabled && (
-            <div className="flex items-center justify-between pt-2 border-t border-neutral-800">
+            <div className="flex items-center justify-between pt-2 border-t">
               <div className="space-y-0.5">
-                <Label className="text-neutral-300">Require Verification Before Login</Label>
-                <p className="text-xs text-neutral-500">Users must verify email before accessing dashboard</p>
+                <Label>Require Verification Before Login</Label>
+                <p className="text-xs text-muted-foreground">Users must verify email before accessing dashboard</p>
               </div>
               <Switch
                 checked={emailSettings.require_verification}
@@ -289,15 +371,15 @@ export default function AdminSettings() {
       </Card>
 
       {/* Task Points Settings */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <Settings className="w-5 h-5 text-purple-400" />
+              <Settings className="w-5 h-5 text-purple-500" />
             </div>
             <div>
-              <CardTitle className="text-neutral-100">Default Points per Task</CardTitle>
-              <CardDescription className="text-neutral-500">
+              <CardTitle>Default Points per Task</CardTitle>
+              <CardDescription>
                 Set default point values for each task type
               </CardDescription>
             </div>
@@ -306,62 +388,56 @@ export default function AdminSettings() {
         <CardContent>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="text-neutral-300">Like Task</Label>
+              <Label>Like Task</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerLike}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerLike: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-neutral-300">Comment Task</Label>
+              <Label>Comment Task</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerComment}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerComment: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-neutral-300">Save Task</Label>
+              <Label>Save Task</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerSave}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerSave: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-neutral-300">Follow Task</Label>
+              <Label>Follow Task</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerFollow}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerFollow: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-neutral-300">Combo Mini (Like + Comment + Save)</Label>
+              <Label>Combo Mini (Like + Comment + Save)</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerComboMini}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerComboMini: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label className="text-neutral-300">Combo Large (Like + Comment + Save + Follow)</Label>
+              <Label>Combo Large (Like + Comment + Save + Follow)</Label>
               <Input
                 type="number"
                 value={taskSettings.pointsPerComboLarge}
                 onChange={(e) => setTaskSettings({ ...taskSettings, pointsPerComboLarge: parseInt(e.target.value) || 0 })}
-                className="bg-neutral-800 border-neutral-700 text-neutral-100"
               />
             </div>
           </div>
@@ -370,11 +446,7 @@ export default function AdminSettings() {
 
       {/* Save Button */}
       <div className="flex justify-end">
-        <Button
-          onClick={handleSaveAll}
-          disabled={isSaving}
-          className="bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
-        >
+        <Button onClick={handleSaveAll} disabled={isSaving}>
           {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
           Save All Settings
         </Button>

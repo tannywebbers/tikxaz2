@@ -10,14 +10,12 @@ import {
   Plus,
   Loader2,
   Coins,
-  CheckCircle,
-  XCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -30,10 +28,11 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
-// Paystack pricing: 10 TikPoints = ₦5
-const POINTS_PER_NAIRA = 2; // 10 points / 5 naira = 2 points per naira
-const MIN_POINTS = 100;
-const MAX_POINTS = 100000;
+interface PricingSettings {
+  points_amount: number;
+  currency_amount: number;
+  currency_symbol: string;
+}
 
 interface Transaction {
   id: string;
@@ -56,12 +55,24 @@ export function WalletPage() {
     purchased: 0
   });
   
+  // Pricing settings from admin
+  const [pricingSettings, setPricingSettings] = useState<PricingSettings>({
+    points_amount: 10,
+    currency_amount: 5,
+    currency_symbol: "₦",
+  });
+  
   // Buy points modal
   const [showBuyModal, setShowBuyModal] = useState(false);
   const [pointsToBuy, setPointsToBuy] = useState(1000);
   const [isPurchasing, setIsPurchasing] = useState(false);
   
-  const priceInNaira = Math.ceil(pointsToBuy / POINTS_PER_NAIRA);
+  const MIN_POINTS = 100;
+  const MAX_POINTS = 100000;
+  
+  // Calculate price based on admin settings
+  const pointsPerCurrency = pricingSettings.points_amount / pricingSettings.currency_amount;
+  const priceInCurrency = Math.ceil(pointsToBuy / pointsPerCurrency);
 
   // Handle payment callback
   useEffect(() => {
@@ -75,9 +86,7 @@ export function WalletPage() {
           ? `${pointsPurchased} TikPoints have been added to your wallet.`
           : "Your TikPoints have been added to your wallet.",
       });
-      // Clear the query params
       setSearchParams({});
-      // Refresh wallet data
       if (user) {
         fetchWalletData();
         refreshProfile?.();
@@ -98,14 +107,27 @@ export function WalletPage() {
   useEffect(() => {
     if (user) {
       fetchWalletData();
+      fetchPricingSettings();
     }
   }, [user]);
+
+  const fetchPricingSettings = async () => {
+    const { data } = await supabase
+      .from("platform_settings")
+      .select("value")
+      .eq("key", "pricing_settings")
+      .maybeSingle();
+    
+    if (data?.value) {
+      const settings = data.value as unknown as PricingSettings;
+      setPricingSettings(prev => ({ ...prev, ...settings }));
+    }
+  };
 
   const fetchWalletData = async () => {
     try {
       setLoading(true);
       
-      // Fetch user's balance
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("tik_points")
@@ -115,7 +137,6 @@ export function WalletPage() {
       if (profileError) throw profileError;
       setBalance(profile?.tik_points || 0);
 
-      // Fetch transactions
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*")
@@ -126,7 +147,6 @@ export function WalletPage() {
       if (txError) throw txError;
       setTransactions(txData || []);
 
-      // Calculate monthly stats
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       
@@ -135,7 +155,7 @@ export function WalletPage() {
       );
 
       const earned = monthlyTx
-        .filter(tx => tx.type === "earn")
+        .filter(tx => tx.type === "earn" || tx.type === "task_reward")
         .reduce((sum, tx) => sum + tx.amount, 0);
       
       const spent = monthlyTx
@@ -176,11 +196,10 @@ export function WalletPage() {
     setIsPurchasing(true);
     
     try {
-      // Call edge function to initialize Paystack payment
       const { data, error } = await supabase.functions.invoke("paystack-initialize", {
         body: {
           email: user.email,
-          amount: priceInNaira * 100, // Paystack expects amount in kobo
+          amount: priceInCurrency * 100,
           points: pointsToBuy,
           userId: user.id,
         }
@@ -189,7 +208,6 @@ export function WalletPage() {
       if (error) throw error;
 
       if (data?.authorization_url) {
-        // Redirect to Paystack checkout
         window.location.href = data.authorization_url;
       } else {
         throw new Error("No authorization URL received");
@@ -236,15 +254,14 @@ export function WalletPage() {
         animate={{ opacity: 1, y: 0 }}
       >
         <Card variant="elevated" className="overflow-hidden relative">
-          {/* Background gradient - non-interactive */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-purple-500/10 to-accent/20 pointer-events-none" />
-          <CardContent className="relative p-8 z-10">
+          <CardContent className="relative p-6 md:p-8 z-10">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div>
                 <p className="text-muted-foreground mb-2">Total Balance</p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold gradient-text">{balance.toLocaleString()}</span>
-                  <span className="text-xl text-muted-foreground">TikPoints</span>
+                  <span className="text-4xl md:text-5xl font-bold gradient-text">{balance.toLocaleString()}</span>
+                  <span className="text-lg md:text-xl text-muted-foreground">TikPoints</span>
                 </div>
                 {stats.earned > 0 && (
                   <div className="flex items-center gap-2 mt-2">
@@ -268,7 +285,7 @@ export function WalletPage() {
       </motion.div>
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -355,10 +372,10 @@ export function WalletPage() {
                   >
                     <div className="flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        tx.type === "earn" ? "bg-success/10" : 
+                        tx.type === "earn" || tx.type === "task_reward" ? "bg-success/10" : 
                         tx.type === "spend" ? "bg-warning/10" : "bg-primary/10"
                       }`}>
-                        {tx.type === "earn" ? (
+                        {tx.type === "earn" || tx.type === "task_reward" ? (
                           <ArrowDownLeft className="w-5 h-5 text-success" />
                         ) : tx.type === "spend" ? (
                           <ArrowUpRight className="w-5 h-5 text-warning" />
@@ -398,46 +415,40 @@ export function WalletPage() {
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            {/* Points selector */}
-            <div className="space-y-3">
-              <Label>Select Amount</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {[500, 1000, 2500, 5000, 10000, 25000].map((amount) => (
-                  <Button
-                    key={amount}
-                    variant={pointsToBuy === amount ? "default" : "outline"}
-                    className="h-auto py-3"
-                    onClick={() => setPointsToBuy(amount)}
-                  >
-                    <div className="text-center">
-                      <div className="font-bold">{amount.toLocaleString()}</div>
-                      <div className="text-xs opacity-70">pts</div>
-                    </div>
-                  </Button>
-                ))}
+            {/* Range Slider */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <Label>Select Amount</Label>
+                <span className="text-2xl font-bold text-primary">{pointsToBuy.toLocaleString()}</span>
               </div>
-            </div>
-
-            {/* Custom amount */}
-            <div className="space-y-2">
-              <Label htmlFor="customPoints">Or enter custom amount</Label>
-              <Input
-                id="customPoints"
-                type="number"
-                min={MIN_POINTS}
-                max={MAX_POINTS}
-                value={pointsToBuy}
-                onChange={(e) => setPointsToBuy(Math.max(MIN_POINTS, Math.min(MAX_POINTS, parseInt(e.target.value) || MIN_POINTS)))}
-              />
-              <input
-                type="range"
+              <Slider
+                value={[pointsToBuy]}
+                onValueChange={([value]) => setPointsToBuy(value)}
                 min={MIN_POINTS}
                 max={MAX_POINTS}
                 step={100}
-                value={pointsToBuy}
-                onChange={(e) => setPointsToBuy(parseInt(e.target.value))}
-                className="w-full accent-primary"
+                className="w-full"
               />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{MIN_POINTS.toLocaleString()} pts</span>
+                <span>{MAX_POINTS.toLocaleString()} pts</span>
+              </div>
+            </div>
+
+            {/* Quick Select */}
+            <div className="grid grid-cols-3 gap-2">
+              {[500, 1000, 2500, 5000, 10000, 25000].map((amount) => (
+                <Button
+                  key={amount}
+                  variant={pointsToBuy === amount ? "default" : "outline"}
+                  className="h-auto py-2"
+                  onClick={() => setPointsToBuy(amount)}
+                >
+                  <div className="text-center">
+                    <div className="font-bold text-sm">{amount.toLocaleString()}</div>
+                  </div>
+                </Button>
+              ))}
             </div>
 
             {/* Price display */}
@@ -448,12 +459,12 @@ export function WalletPage() {
               </div>
               <div className="flex justify-between items-center mb-2">
                 <span className="text-muted-foreground">Rate</span>
-                <span className="text-sm">10 pts = ₦5</span>
+                <span className="text-sm">{pricingSettings.points_amount} pts = {pricingSettings.currency_symbol}{pricingSettings.currency_amount}</span>
               </div>
               <div className="border-t border-border pt-2 mt-2">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Total</span>
-                  <span className="text-2xl font-bold text-primary">₦{priceInNaira.toLocaleString()}</span>
+                  <span className="text-2xl font-bold text-primary">{pricingSettings.currency_symbol}{priceInCurrency.toLocaleString()}</span>
                 </div>
               </div>
             </div>
@@ -474,7 +485,7 @@ export function WalletPage() {
               ) : (
                 <>
                   <CreditCard className="w-5 h-5" />
-                  Pay ₦{priceInNaira.toLocaleString()} with Paystack
+                  Pay {pricingSettings.currency_symbol}{priceInCurrency.toLocaleString()} with Paystack
                 </>
               )}
             </Button>
