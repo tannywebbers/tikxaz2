@@ -152,16 +152,36 @@ export default function AdminEmailConfig() {
     }
   };
 
+  const [testEmail, setTestEmail] = useState("");
+  const [showTestDialog, setShowTestDialog] = useState(false);
+
   const handleTestEmail = async () => {
-    if (!smtpConfig?.is_enabled || !smtpConfig?.password_set) {
-      toast({ variant: "destructive", title: "Error", description: "SMTP must be enabled and password set to send test email." });
+    if (!testEmail) {
+      toast({ variant: "destructive", title: "Error", description: "Please enter an email address to send test to." });
       return;
     }
     
     setIsTesting(true);
     try {
-      // This would call an edge function to send a test email
-      toast({ title: "Test Email", description: "Test email functionality would be triggered here." });
+      const { data, error } = await supabase.functions.invoke("test-smtp", {
+        body: {
+          to: testEmail,
+          smtpConfig: {
+            host: smtpConfig?.host,
+            port: smtpConfig?.port,
+            username: smtpConfig?.username,
+            password: smtpPassword || "***", // Would need actual password
+            from_name: smtpConfig?.from_name,
+            from_email: smtpConfig?.from_email,
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      toast({ title: "Success", description: data.message || "Test email sent successfully!" });
+      setShowTestDialog(false);
+      setTestEmail("");
     } catch (error) {
       console.error("Error sending test email:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to send test email." });

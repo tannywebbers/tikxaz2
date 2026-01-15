@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutGrid, 
@@ -11,11 +11,15 @@ import {
   Shield,
   Globe,
   Mail,
-  Megaphone
+  Megaphone,
+  Menu,
+  X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const navItems = [
   { icon: LayoutGrid, label: "Dashboard", href: "/baki/stage/admin" },
@@ -29,10 +33,38 @@ const navItems = [
   { icon: Settings, label: "Settings", href: "/baki/stage/admin/settings" },
 ];
 
+function NavContent({ onItemClick }: { onItemClick?: () => void }) {
+  const location = useLocation();
+  
+  return (
+    <nav className="flex-1 p-4 space-y-1">
+      {navItems.map((item) => {
+        const isActive = location.pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            to={item.href}
+            onClick={onItemClick}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
+              isActive
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <item.icon className="w-5 h-5" />
+            <span className="font-medium">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAdmin, isLoading, signOut } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && (!user || !isAdmin)) {
@@ -47,8 +79,8 @@ export default function AdminLayout() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-950">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-400" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -58,45 +90,31 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-neutral-800 bg-neutral-900 flex flex-col">
-        <div className="p-6 border-b border-neutral-800">
+    <div className="min-h-screen bg-background flex">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:flex w-64 border-r border-border bg-card flex-col">
+        <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-neutral-300" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <span className="font-semibold text-neutral-100">Admin Panel</span>
-              <p className="text-xs text-neutral-500">System Management</p>
+              <span className="font-semibold">Admin Panel</span>
+              <p className="text-xs text-muted-foreground">System Management</p>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                to={item.href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                  isActive
-                    ? "bg-neutral-800 text-neutral-100"
-                    : "text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200"
-                }`}
-              >
-                <item.icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <NavContent />
 
-        <div className="p-4 border-t border-neutral-800">
+        <div className="p-4 border-t border-border space-y-2">
+          <div className="flex items-center justify-between px-4">
+            <span className="text-sm text-muted-foreground">Theme</span>
+            <ThemeToggle />
+          </div>
           <Button
             variant="ghost"
-            className="w-full justify-start gap-3 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800"
+            className="w-full justify-start gap-3 text-muted-foreground hover:text-foreground"
             onClick={handleSignOut}
           >
             <LogOut className="w-5 h-5" />
@@ -106,17 +124,62 @@ export default function AdminLayout() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-neutral-800 bg-neutral-900 flex items-center justify-between px-6">
-          <h1 className="text-lg font-medium text-neutral-100">
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6">
+          {/* Mobile Menu */}
+          <div className="lg:hidden">
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-0">
+                <div className="p-6 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+                      <Shield className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <span className="font-semibold">Admin Panel</span>
+                      <p className="text-xs text-muted-foreground">System Management</p>
+                    </div>
+                  </div>
+                </div>
+                <NavContent onItemClick={() => setMobileOpen(false)} />
+                <div className="p-4 border-t border-border space-y-2">
+                  <div className="flex items-center justify-between px-4">
+                    <span className="text-sm text-muted-foreground">Theme</span>
+                    <ThemeToggle />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-3"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="w-5 h-5" />
+                    Sign Out
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          <h1 className="text-lg font-medium truncate">
             {navItems.find(item => item.href === location.pathname)?.label || "Admin"}
           </h1>
-          <div className="text-sm text-neutral-500">
-            Logged in as <span className="text-neutral-300">{user?.email}</span>
+          
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:block text-sm text-muted-foreground">
+              <span className="text-foreground">{user?.email}</span>
+            </div>
+            <div className="lg:hidden">
+              <ThemeToggle />
+            </div>
           </div>
         </header>
 
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <Outlet />
         </main>
       </div>
