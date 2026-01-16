@@ -209,15 +209,15 @@ export default function TaskBrowser() {
   };
 
   const getMaxScreenshots = (taskType: string) => {
-    // No screenshots for follow-only tasks
-    if (taskType === "follow") return 0;
+    // Follow tasks now require screenshot
+    if (taskType === "follow") return 1;
     if (taskType === "combo_large") return 4;
     return 3;
   };
 
   const requiresScreenshot = (taskType: string) => {
-    // Follow tasks don't need screenshots - we scrape to verify
-    return taskType !== "follow";
+    // All tasks require screenshots now
+    return true;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,21 +284,34 @@ export default function TaskBrowser() {
     setTimeout(() => setCommentCopied(false), 3000);
   };
 
-  // Verify follow task via scraping (no screenshot needed)
+  // Verify follow task via screenshot (new method)
   const verifyFollowTask = async () => {
     if (!selectedTask || !user || !profile || !advertiserUsername) return;
 
+    if (screenshots.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Screenshot required",
+        description: `Please upload a screenshot showing @${advertiserUsername} in your Following list.`,
+      });
+      return;
+    }
+
     setIsVerifyingFollow(true);
-    setVerificationResult({ status: "pending", message: "Checking if you follow the user..." });
+    setVerificationResult({ status: "pending", message: "Analyzing your screenshot with AI..." });
 
     try {
+      // Convert screenshot to base64
+      const screenshotBase64 = await fileToBase64(screenshots[0]);
+
       const { data, error } = await supabase.functions.invoke("verify-follow", {
         body: {
-          action: "verify_follow_scrape",
+          action: "verify_follow_screenshot",
           adId: selectedTask.id,
           userId: user.id,
           advertiserUsername: advertiserUsername,
           performerUsername: profile.tiktok_username,
+          screenshot: screenshotBase64,
         },
       });
 
@@ -307,7 +320,7 @@ export default function TaskBrowser() {
       if (data?.verified) {
         setVerificationResult({
           status: "success",
-          message: `Follow verified! You earned ${selectedTask.points_per_task} TikPoints. A re-check will occur in 5 minutes.`,
+          message: `Follow verified! You earned ${selectedTask.points_per_task} TikPoints.`,
         });
         
         await refreshProfile();
@@ -318,10 +331,22 @@ export default function TaskBrowser() {
           setVerificationResult(null);
           fetchTasks();
         }, 3000);
+      } else if (data?.needsReview) {
+        setVerificationResult({
+          status: "pending",
+          message: "Your submission has been sent for manual review. You'll be notified once it's processed.",
+        });
+        
+        setTimeout(() => {
+          setSelectedTask(null);
+          setScreenshots([]);
+          setVerificationResult(null);
+          fetchTasks();
+        }, 3000);
       } else {
         setVerificationResult({
           status: "error",
-          message: data?.reason || "Could not verify that you follow this user. Please make sure you're following them and try again.",
+          message: data?.reason || `Could not verify that you follow @${advertiserUsername}. Please ensure your screenshot clearly shows their username in your Following list.`,
         });
       }
     } catch (error) {
@@ -467,9 +492,11 @@ export default function TaskBrowser() {
       save: ["Tap the bookmark icon to save the video (should turn yellow)", "Take a screenshot showing the yellow bookmark"],
       watch: ["Watch the entire video from start to finish", "Take a screenshot at the end of the video"],
       follow: [
-        "Open the creator's profile from the link",
-        `Follow @${advertiserUsername || "the creator"}`,
-        "Click 'Verify Follow' below - we'll check automatically"
+        "Open the creator's profile and follow them",
+        "Go to YOUR profile → tap 'Following'",
+        `Search for "@${advertiserUsername || "the creator"}" in your following list`,
+        "Take a screenshot showing their username in your Following list",
+        "Upload the screenshot below"
       ],
       combo_mini: [
         "Like the video (heart turns red)",
@@ -482,7 +509,7 @@ export default function TaskBrowser() {
         "Generate and post the AI comment",
         "Save the video (bookmark turns yellow)",
         `Follow @${advertiserUsername || "the creator"}`,
-        "Take screenshots of each action"
+        "Take screenshots of each action including your Following list"
       ]
     };
     return instructions[taskType] || [];
@@ -502,8 +529,8 @@ export default function TaskBrowser() {
   const canSubmit = () => {
     if (!selectedTask) return false;
     
-    // Follow-only tasks just need the verify button
-    if (isFollowOnlyTask) return true;
+    // All tasks now require screenshots including follow
+    if (isFollowOnlyTask) return screenshots.length > 0;
     
     // Comment tasks need generated comment AND screenshots
     if (isCommentTask && !generatedComment) return false;
@@ -776,15 +803,49 @@ export default function TaskBrowser() {
                 </div>
               )}
 
-              {/* Screenshot Upload (for non-follow tasks) */}
+              {/* Advertiser Username Display (for follow tasks) */}
+              {isFollowOnlyTask && advertiserUsername && (
+                <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                  <h4 className="font-medium flex items-center gap-2 text-purple-600 dark:text-purple-400 mb-2">
+                    <Users className="w-4 h-4" />
+                    Username to Search For
+                  </h4>
+                  <div className="flex items-center gap-2 p-3 bg-background rounded-lg border">
+                    <span className="text-lg font-bold">@{advertiserUsername}</span>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="ml-auto gap-1"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(advertiserUsername);
+                        toast({ title: "Copied!", description: "Username copied to clipboard." });
+                      }}
+                    >
+                      <Copy className="w-3 h-3" />
+                      Copy
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Go to your TikTok profile → Following list → Search for this username and take a screenshot
+                  </p>
+                </div>
+              )}
+
+              {/* Screenshot Upload (for all tasks now) */}
               {requiresScreenshot(selectedTask.task_type) && (
                 <div className="space-y-3">
                   <h4 className="font-medium flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm">
-                      {isCommentTask ? "3" : "3"}
+                      {isCommentTask ? "3" : isFollowOnlyTask ? "3" : "3"}
                     </span>
-                    Upload proof screenshots (max {getMaxScreenshots(selectedTask.task_type)})
+                    Upload proof screenshot{getMaxScreenshots(selectedTask.task_type) > 1 ? "s" : ""} (max {getMaxScreenshots(selectedTask.task_type)})
                   </h4>
+
+                  {isFollowOnlyTask && (
+                    <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                      📱 Screenshot must show your TikTok "Following" list with <strong>@{advertiserUsername}</strong> visible in the list.
+                    </p>
+                  )}
 
                   <div className="flex flex-wrap gap-2">
                     {screenshots.map((file, index) => (
@@ -852,7 +913,7 @@ export default function TaskBrowser() {
                   <Button
                     variant="gradient"
                     onClick={verifyFollowTask}
-                    disabled={isVerifyingFollow}
+                    disabled={isVerifyingFollow || screenshots.length === 0}
                   >
                     {isVerifyingFollow ? (
                       <>
