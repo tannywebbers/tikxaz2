@@ -274,9 +274,79 @@ export default function AdminEmailConfig() {
       <div>
         <h1 className="text-2xl font-semibold text-neutral-100">Email Configuration</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Configure SMTP settings and allowed email domains for registration
+          Configure email sending for verification codes and notifications
         </p>
       </div>
+
+      {/* Resend Setup Guide */}
+      <Card className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-500/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+              <Send className="w-5 h-5 text-purple-400" />
+            </div>
+            <div className="flex-1">
+              <CardTitle className="text-neutral-100">Recommended: Use Resend</CardTitle>
+              <CardDescription className="text-neutral-400">
+                For reliable email delivery, we recommend using Resend (free tier available)
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="text-sm text-neutral-300 space-y-2">
+            <p><strong>Quick Setup:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 text-neutral-400">
+              <li>Go to <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">resend.com</a> and create a free account</li>
+              <li>Get your API key from the dashboard</li>
+              <li>Add <code className="bg-neutral-800 px-1.5 py-0.5 rounded">RESEND_API_KEY</code> to your project secrets</li>
+              <li>Use the "Test Email" button below to verify it works</li>
+            </ol>
+          </div>
+          <p className="text-xs text-neutral-500">
+            💡 Once Resend is configured, you can still use the SMTP settings below as fallback config
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Test Email Section */}
+      <Card className="bg-neutral-900 border-neutral-800">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <Mail className="w-5 h-5 text-green-400" />
+            </div>
+            <div>
+              <CardTitle className="text-neutral-100">Send Test Email</CardTitle>
+              <CardDescription className="text-neutral-500">
+                Verify your email configuration is working
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              className="bg-neutral-800 border-neutral-700"
+              placeholder="Enter your email address"
+            />
+            <Button
+              onClick={handleTestEmail}
+              disabled={isTesting || !testEmail}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Send Test
+            </Button>
+          </div>
+          <p className="text-xs text-neutral-500">
+            A test email will be sent to verify your configuration is working correctly
+          </p>
+        </CardContent>
+      </Card>
 
       {/* SMTP Configuration */}
       <Card className="bg-neutral-900 border-neutral-800">
@@ -286,9 +356,9 @@ export default function AdminEmailConfig() {
               <Server className="w-5 h-5 text-blue-400" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-neutral-100">SMTP Settings</CardTitle>
+              <CardTitle className="text-neutral-100">SMTP Settings (Optional)</CardTitle>
               <CardDescription className="text-neutral-500">
-                Configure email sending for verification codes
+                Alternative: Configure traditional SMTP settings
               </CardDescription>
             </div>
             {smtpConfig?.is_enabled && smtpConfig?.password_set && (
@@ -380,25 +450,12 @@ export default function AdminEmailConfig() {
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={smtpConfig?.is_enabled || false}
-                  onCheckedChange={(checked) => setSmtpConfig(prev => prev ? { ...prev, is_enabled: checked } : null)}
-                />
-                <Label className="text-neutral-400">Enable SMTP</Label>
-              </div>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestEmail}
-                disabled={isTesting || !smtpConfig?.is_enabled || !smtpConfig?.password_set}
-                className="border-neutral-700"
-              >
-                {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                Test Email
-              </Button>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={smtpConfig?.is_enabled || false}
+                onCheckedChange={(checked) => setSmtpConfig(prev => prev ? { ...prev, is_enabled: checked } : null)}
+              />
+              <Label className="text-neutral-400">Enable SMTP</Label>
             </div>
             
             <Button
