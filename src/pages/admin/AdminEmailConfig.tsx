@@ -30,6 +30,7 @@ interface SMTPConfig {
   port: number;
   username: string;
   password_set: boolean;
+  smtp_password: string | null;
   from_name: string;
   from_email: string;
   is_enabled: boolean;
@@ -70,6 +71,10 @@ export default function AdminEmailConfig() {
       
       if (smtp) {
         setSmtpConfig(smtp);
+        // Load saved password if exists
+        if (smtp.smtp_password) {
+          setSmtpPassword(smtp.smtp_password);
+        }
       } else {
         // Initialize with Brevo defaults
         setSmtpConfig({
@@ -78,6 +83,7 @@ export default function AdminEmailConfig() {
           port: 587,
           username: "",
           password_set: false,
+          smtp_password: null,
           from_name: "TikPoints",
           from_email: "",
           is_enabled: false,
@@ -118,8 +124,10 @@ export default function AdminEmailConfig() {
         is_enabled: smtpConfig.is_enabled,
       };
 
+      // Always save the password if provided
       if (smtpPassword) {
         updateData.password_set = true;
+        updateData.smtp_password = smtpPassword;
       }
 
       if (smtpConfig.id) {
@@ -137,7 +145,8 @@ export default function AdminEmailConfig() {
           from_name: smtpConfig.from_name,
           from_email: smtpConfig.from_email,
           is_enabled: smtpConfig.is_enabled,
-          password_set: !!smtpPassword
+          password_set: !!smtpPassword,
+          smtp_password: smtpPassword || null
         };
         const { data, error } = await supabase
           .from("smtp_config")
@@ -149,7 +158,7 @@ export default function AdminEmailConfig() {
         setSmtpConfig(data);
       }
 
-      toast({ title: "Saved", description: "SMTP configuration updated successfully." });
+      toast({ title: "Saved", description: "SMTP configuration saved successfully. Your API key is now stored." });
       fetchConfig();
     } catch (error) {
       console.error("Error saving SMTP:", error);
@@ -383,7 +392,7 @@ export default function AdminEmailConfig() {
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   className="pr-10"
-                  placeholder={smtpConfig?.password_set ? "••••••••••••" : "Enter SMTP key"}
+                  placeholder="Enter your Brevo SMTP key"
                 />
                 <button
                   type="button"
@@ -393,9 +402,14 @@ export default function AdminEmailConfig() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {smtpConfig?.password_set && !smtpPassword && (
+              {smtpPassword && (
                 <p className="text-xs text-success flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Password saved (enter new to update)
+                  <Check className="w-3 h-3" /> Password loaded from database
+                </p>
+              )}
+              {!smtpPassword && smtpConfig?.password_set && (
+                <p className="text-xs text-warning flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> Please re-enter your SMTP key
                 </p>
               )}
             </div>
