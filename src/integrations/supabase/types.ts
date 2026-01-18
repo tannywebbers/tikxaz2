@@ -427,6 +427,7 @@ export type Database = {
           is_enabled: boolean
           password_set: boolean
           port: number
+          smtp_password: string | null
           updated_at: string
           username: string
         }
@@ -439,6 +440,7 @@ export type Database = {
           is_enabled?: boolean
           password_set?: boolean
           port?: number
+          smtp_password?: string | null
           updated_at?: string
           username: string
         }
@@ -451,6 +453,7 @@ export type Database = {
           is_enabled?: boolean
           password_set?: boolean
           port?: number
+          smtp_password?: string | null
           updated_at?: string
           username?: string
         }

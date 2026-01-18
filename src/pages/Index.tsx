@@ -159,6 +159,16 @@ const Index = () => {
     );
   }
 
+  // Prepare hero content from DB
+  const heroContent = sections.hero ? {
+    title: sections.hero.title || "Earn & Grow on TikTok",
+    subtitle: sections.hero.subtitle || "AI-Powered TikTok Engagement Exchange",
+    content: sections.hero.content || "Exchange engagement for TikPoints. Complete tasks to earn, or boost your content with authentic engagement from real users.",
+    button_text: sections.hero.button_text || "Start Earning Now",
+    button_url: sections.hero.button_url || "/register",
+    is_visible: sections.hero.is_visible,
+  } : undefined;
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -166,8 +176,8 @@ const Index = () => {
       {/* Top Banner Ad */}
       <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/30" />
       
-      {/* Hero Section - always show but uses DB content */}
-      <HeroSection />
+      {/* Hero Section - pass DB content */}
+      <HeroSection content={heroContent} />
       
       {/* Stats Section */}
       {sections.stats?.is_visible !== false && <StatsSection />}
