@@ -14,39 +14,117 @@ import { SocialBar } from "@/components/ads/SocialBar";
 
 interface SiteSettings {
   site_name?: string;
-  logo_url?: string;
+  site_logo?: string;
   support_email?: string;
   maintenance_mode?: boolean;
+}
+
+interface LandingSection {
+  section_key: string;
+  title: string | null;
+  subtitle: string | null;
+  content: string | null;
+  image_url: string | null;
+  button_text: string | null;
+  button_url: string | null;
+  is_visible: boolean;
 }
 
 const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>({});
+  const [sections, setSections] = useState<Record<string, LandingSection>>({});
 
   useEffect(() => {
-    const fetchSettings = async () => {
+    const fetchData = async () => {
       try {
-        const { data, error } = await supabase
+        // Fetch site settings
+        const { data: settingsData } = await supabase
           .from("platform_settings")
           .select("key, value")
           .eq("key", "site_settings")
           .maybeSingle();
 
-        if (!error && data) {
-          const settings = data.value as SiteSettings;
+        if (settingsData) {
+          const settings = settingsData.value as SiteSettings;
           setSiteSettings(settings);
           setMaintenanceMode(settings.maintenance_mode || false);
+
+          // Update PWA manifest dynamically if logo is set
+          if (settings.site_logo) {
+            updatePWAManifest(settings);
+          }
+        }
+
+        // Fetch landing content
+        const { data: landingData } = await supabase
+          .from("landing_content")
+          .select("*")
+          .order("sort_order");
+
+        if (landingData) {
+          const sectionsMap: Record<string, LandingSection> = {};
+          landingData.forEach((section) => {
+            sectionsMap[section.section_key] = section;
+          });
+          setSections(sectionsMap);
         }
       } catch (err) {
-        console.error("Error fetching site settings:", err);
+        console.error("Error fetching data:", err);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchSettings();
+    fetchData();
   }, []);
+
+  // Update PWA manifest with admin-configured logo
+  const updatePWAManifest = (settings: SiteSettings) => {
+    const manifestLink = document.querySelector('link[rel="manifest"]');
+    if (manifestLink && settings.site_logo) {
+      // Create a dynamic manifest
+      const manifest = {
+        name: settings.site_name || "TikPoints",
+        short_name: settings.site_name || "TikPoints",
+        description: "Earn points by engaging with TikTok content",
+        theme_color: "#ec4899",
+        background_color: "#0a0a0f",
+        display: "standalone",
+        orientation: "portrait",
+        scope: "/",
+        start_url: "/",
+        icons: [
+          {
+            src: settings.site_logo,
+            sizes: "192x192",
+            type: "image/png"
+          },
+          {
+            src: settings.site_logo,
+            sizes: "512x512",
+            type: "image/png"
+          },
+          {
+            src: settings.site_logo,
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable"
+          }
+        ]
+      };
+
+      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      const manifestURL = URL.createObjectURL(blob);
+      manifestLink.setAttribute('href', manifestURL);
+    }
+
+    // Update document title
+    if (settings.site_name) {
+      document.title = `${settings.site_name} - TikTok Engagement Exchange`;
+    }
+  };
 
   if (isLoading) {
     return (
@@ -85,26 +163,35 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       
-      {/* Top Banner Ad - 728x90 Leaderboard */}
+      {/* Top Banner Ad */}
       <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/30" />
       
+      {/* Hero Section - always show but uses DB content */}
       <HeroSection />
-      <StatsSection />
-      <HowItWorks />
-      <FeaturesSection />
+      
+      {/* Stats Section */}
+      {sections.stats?.is_visible !== false && <StatsSection />}
+      
+      {/* How It Works */}
+      {sections.how_it_works?.is_visible !== false && <HowItWorks />}
+      
+      {/* Features Section */}
+      {sections.features?.is_visible !== false && <FeaturesSection />}
+      
+      {/* Pricing Section */}
       <PricingSection />
       
-      {/* Bottom Banner Ad - 728x90 Leaderboard or 320x50 Mobile */}
+      {/* Bottom Banner Ad */}
       <AdBanner adType="banner_bottom" className="w-full flex justify-center py-4 bg-muted/30" />
       
       <Footer />
       
-      {/* Popup/Popunder Ads - Triggered once per session */}
+      {/* Popup Ads */}
       <AdPopup adType="popup" />
       <AdPopup adType="popunder" />
       <AdPopup adType="interstitial" />
       
-      {/* Social Bar - Floating notification style */}
+      {/* Social Bar */}
       <SocialBar />
     </div>
   );

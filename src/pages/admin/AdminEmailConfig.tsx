@@ -12,7 +12,8 @@ import {
   Server,
   Shield,
   Send,
-  AlertCircle
+  AlertCircle,
+  Info
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ export default function AdminEmailConfig() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -69,10 +71,10 @@ export default function AdminEmailConfig() {
       if (smtp) {
         setSmtpConfig(smtp);
       } else {
-        // Initialize with defaults
+        // Initialize with Brevo defaults
         setSmtpConfig({
           id: "",
-          host: "",
+          host: "smtp-relay.brevo.com",
           port: 587,
           username: "",
           password_set: false,
@@ -100,14 +102,14 @@ export default function AdminEmailConfig() {
   const handleSaveSMTP = async () => {
     if (!smtpConfig) return;
     
-    if (!smtpConfig.host || !smtpConfig.from_email) {
-      toast({ variant: "destructive", title: "Error", description: "Please fill in host and from email." });
+    if (!smtpConfig.host || !smtpConfig.from_email || !smtpConfig.username) {
+      toast({ variant: "destructive", title: "Error", description: "Please fill in host, username, and from email." });
       return;
     }
     
     setIsSaving(true);
     try {
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         host: smtpConfig.host,
         port: smtpConfig.port,
         username: smtpConfig.username,
@@ -128,12 +130,18 @@ export default function AdminEmailConfig() {
         
         if (error) throw error;
       } else {
+        const insertData = {
+          host: smtpConfig.host,
+          port: smtpConfig.port,
+          username: smtpConfig.username,
+          from_name: smtpConfig.from_name,
+          from_email: smtpConfig.from_email,
+          is_enabled: smtpConfig.is_enabled,
+          password_set: !!smtpPassword
+        };
         const { data, error } = await supabase
           .from("smtp_config")
-          .insert({
-            ...updateData,
-            password_set: !!smtpPassword
-          })
+          .insert(insertData)
           .select()
           .single();
         
@@ -141,8 +149,7 @@ export default function AdminEmailConfig() {
         setSmtpConfig(data);
       }
 
-      toast({ title: "Saved", description: "SMTP configuration updated." });
-      setSmtpPassword("");
+      toast({ title: "Saved", description: "SMTP configuration updated successfully." });
       fetchConfig();
     } catch (error) {
       console.error("Error saving SMTP:", error);
@@ -152,12 +159,18 @@ export default function AdminEmailConfig() {
     }
   };
 
-  const [testEmail, setTestEmail] = useState("");
-  const [showTestDialog, setShowTestDialog] = useState(false);
-
   const handleTestEmail = async () => {
     if (!testEmail) {
       toast({ variant: "destructive", title: "Error", description: "Please enter an email address to send test to." });
+      return;
+    }
+
+    if (!smtpConfig?.host || !smtpConfig?.username || !smtpPassword) {
+      toast({ 
+        variant: "destructive", 
+        title: "Error", 
+        description: "Please fill in all SMTP fields including password before testing." 
+      });
       return;
     }
     
@@ -167,24 +180,28 @@ export default function AdminEmailConfig() {
         body: {
           to: testEmail,
           smtpConfig: {
-            host: smtpConfig?.host,
-            port: smtpConfig?.port,
-            username: smtpConfig?.username,
-            password: smtpPassword || "***", // Would need actual password
-            from_name: smtpConfig?.from_name,
-            from_email: smtpConfig?.from_email,
+            host: smtpConfig.host,
+            port: smtpConfig.port,
+            username: smtpConfig.username,
+            password: smtpPassword,
+            from_name: smtpConfig.from_name,
+            from_email: smtpConfig.from_email,
           }
         }
       });
 
       if (error) throw error;
 
-      toast({ title: "Success", description: data.message || "Test email sent successfully!" });
-      setShowTestDialog(false);
-      setTestEmail("");
+      if (data?.success) {
+        toast({ title: "Success! 🎉", description: data.message || "Test email sent successfully!" });
+        setTestEmail("");
+      } else {
+        throw new Error(data?.error || "Failed to send email");
+      }
     } catch (error) {
       console.error("Error sending test email:", error);
-      toast({ variant: "destructive", title: "Error", description: "Failed to send test email." });
+      const errorMessage = error instanceof Error ? error.message : "Failed to send test email";
+      toast({ variant: "destructive", title: "Error", description: errorMessage });
     } finally {
       setIsTesting(false);
     }
@@ -195,7 +212,6 @@ export default function AdminEmailConfig() {
     
     const domain = newDomain.toLowerCase().trim();
     
-    // More flexible domain validation
     if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(domain)) {
       toast({ variant: "destructive", title: "Invalid domain", description: "Please enter a valid domain (e.g., gmail.com)." });
       return;
@@ -264,7 +280,7 @@ export default function AdminEmailConfig() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -272,97 +288,57 @@ export default function AdminEmailConfig() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-neutral-100">Email Configuration</h1>
-        <p className="text-sm text-neutral-500 mt-1">
-          Configure email sending for verification codes and notifications
+        <h1 className="text-2xl font-semibold">Email Configuration</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure SMTP email sending for verification codes and notifications
         </p>
       </div>
 
-      {/* Resend Setup Guide */}
-      <Card className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-500/20">
+      {/* Brevo Setup Guide */}
+      <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/20">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-              <Send className="w-5 h-5 text-purple-400" />
+            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <Info className="w-5 h-5 text-blue-400" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-neutral-100">Recommended: Use Resend</CardTitle>
-              <CardDescription className="text-neutral-400">
-                For reliable email delivery, we recommend using Resend (free tier available)
+              <CardTitle>Brevo (Sendinblue) SMTP Setup</CardTitle>
+              <CardDescription>
+                Free tier includes 300 emails/day - perfect for getting started
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-sm text-neutral-300 space-y-2">
+          <div className="text-sm space-y-2">
             <p><strong>Quick Setup:</strong></p>
-            <ol className="list-decimal list-inside space-y-1 text-neutral-400">
-              <li>Go to <a href="https://resend.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">resend.com</a> and create a free account</li>
-              <li>Get your API key from the dashboard</li>
-              <li>Add <code className="bg-neutral-800 px-1.5 py-0.5 rounded">RESEND_API_KEY</code> to your project secrets</li>
-              <li>Use the "Test Email" button below to verify it works</li>
+            <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+              <li>Go to <a href="https://www.brevo.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">brevo.com</a> and create a free account</li>
+              <li>Navigate to Settings → SMTP & API</li>
+              <li>Copy your SMTP Key (this is your password)</li>
+              <li>Host: <code className="bg-muted px-1.5 py-0.5 rounded">smtp-relay.brevo.com</code></li>
+              <li>Port: <code className="bg-muted px-1.5 py-0.5 rounded">587</code></li>
+              <li>Username: Your Brevo login email</li>
             </ol>
           </div>
-          <p className="text-xs text-neutral-500">
-            💡 Once Resend is configured, you can still use the SMTP settings below as fallback config
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Test Email Section */}
-      <Card className="bg-neutral-900 border-neutral-800">
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-green-400" />
-            </div>
-            <div>
-              <CardTitle className="text-neutral-100">Send Test Email</CardTitle>
-              <CardDescription className="text-neutral-500">
-                Verify your email configuration is working
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              type="email"
-              value={testEmail}
-              onChange={(e) => setTestEmail(e.target.value)}
-              className="bg-neutral-800 border-neutral-700"
-              placeholder="Enter your email address"
-            />
-            <Button
-              onClick={handleTestEmail}
-              disabled={isTesting || !testEmail}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-              Send Test
-            </Button>
-          </div>
-          <p className="text-xs text-neutral-500">
-            A test email will be sent to verify your configuration is working correctly
-          </p>
         </CardContent>
       </Card>
 
       {/* SMTP Configuration */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-              <Server className="w-5 h-5 text-blue-400" />
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Server className="w-5 h-5 text-primary" />
             </div>
             <div className="flex-1">
-              <CardTitle className="text-neutral-100">SMTP Settings (Optional)</CardTitle>
-              <CardDescription className="text-neutral-500">
-                Alternative: Configure traditional SMTP settings
+              <CardTitle>SMTP Settings</CardTitle>
+              <CardDescription>
+                Configure your Brevo or other SMTP provider
               </CardDescription>
             </div>
             {smtpConfig?.is_enabled && smtpConfig?.password_set && (
-              <Badge className="bg-green-500/10 text-green-400 border-green-500/20">
+              <Badge className="bg-success/10 text-success border-success/20">
                 <Check className="w-3 h-3 mr-1" />
                 Configured
               </Badge>
@@ -372,21 +348,19 @@ export default function AdminEmailConfig() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-neutral-400">SMTP Host *</Label>
+              <Label>SMTP Host *</Label>
               <Input
                 value={smtpConfig?.host || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, host: e.target.value } : null)}
-                className="bg-neutral-800 border-neutral-700"
-                placeholder="smtp.gmail.com"
+                placeholder="smtp-relay.brevo.com"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-400">Port</Label>
+              <Label>Port</Label>
               <Input
                 type="number"
                 value={smtpConfig?.port || 587}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, port: parseInt(e.target.value) } : null)}
-                className="bg-neutral-800 border-neutral-700"
                 placeholder="587"
               />
             </div>
@@ -394,35 +368,34 @@ export default function AdminEmailConfig() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-neutral-400">Username</Label>
+              <Label>Username (Login Email) *</Label>
               <Input
                 value={smtpConfig?.username || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, username: e.target.value } : null)}
-                className="bg-neutral-800 border-neutral-700"
                 placeholder="your@email.com"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-400">Password</Label>
+              <Label>SMTP Key / Password *</Label>
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
-                  className="bg-neutral-800 border-neutral-700 pr-10"
-                  placeholder={smtpConfig?.password_set ? "••••••••" : "Enter password"}
+                  className="pr-10"
+                  placeholder={smtpConfig?.password_set ? "••••••••••••" : "Enter SMTP key"}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {smtpConfig?.password_set && (
-                <p className="text-xs text-green-400 flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Password is set
+              {smtpConfig?.password_set && !smtpPassword && (
+                <p className="text-xs text-success flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Password saved (enter new to update)
                 </p>
               )}
             </div>
@@ -430,140 +403,152 @@ export default function AdminEmailConfig() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-neutral-400">From Name</Label>
+              <Label>From Name</Label>
               <Input
                 value={smtpConfig?.from_name || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, from_name: e.target.value } : null)}
-                className="bg-neutral-800 border-neutral-700"
                 placeholder="TikPoints"
               />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-400">From Email *</Label>
+              <Label>From Email *</Label>
               <Input
                 value={smtpConfig?.from_email || ""}
                 onChange={(e) => setSmtpConfig(prev => prev ? { ...prev, from_email: e.target.value } : null)}
-                className="bg-neutral-800 border-neutral-700"
-                placeholder="noreply@tikpoints.com"
+                placeholder="noreply@yourdomain.com"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-4 border-t border-neutral-800">
+          <div className="flex items-center justify-between pt-4 border-t">
             <div className="flex items-center gap-2">
               <Switch
                 checked={smtpConfig?.is_enabled || false}
                 onCheckedChange={(checked) => setSmtpConfig(prev => prev ? { ...prev, is_enabled: checked } : null)}
               />
-              <Label className="text-neutral-400">Enable SMTP</Label>
+              <Label>Enable SMTP</Label>
             </div>
             
             <Button
               onClick={handleSaveSMTP}
               disabled={isSaving}
-              className="bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
             >
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-              Save SMTP
+              Save SMTP Settings
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Allowed Email Domains */}
-      <Card className="bg-neutral-900 border-neutral-800">
+      {/* Test Email Section */}
+      <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <Shield className="w-5 h-5 text-green-400" />
+            <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
+              <Mail className="w-5 h-5 text-success" />
             </div>
             <div>
-              <CardTitle className="text-neutral-100">Allowed Email Domains</CardTitle>
-              <CardDescription className="text-neutral-500">
-                Restrict registration to specific email domains
+              <CardTitle>Send Test Email</CardTitle>
+              <CardDescription>
+                Verify your SMTP configuration is working
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-blue-400 mt-0.5" />
-              <div className="text-sm text-neutral-300">
-                <p className="font-medium mb-1">How it works</p>
-                <p className="text-neutral-400">
-                  If no domains are added, all email addresses can register. 
-                  Once you add domains, only users with those email domains can sign up.
-                </p>
-              </div>
+          {!smtpPassword && (
+            <div className="p-3 rounded-lg bg-warning/10 border border-warning/20 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                Enter your SMTP password above before sending a test email
+              </p>
             </div>
-          </div>
-
+          )}
           <div className="flex gap-2">
             <Input
-              value={newDomain}
-              onChange={(e) => setNewDomain(e.target.value)}
-              className="bg-neutral-800 border-neutral-700"
-              placeholder="gmail.com"
-              onKeyDown={(e) => e.key === "Enter" && handleAddDomain()}
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="Enter your email address"
             />
             <Button
-              onClick={handleAddDomain}
-              className="bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+              onClick={handleTestEmail}
+              disabled={isTesting || !testEmail || !smtpPassword}
+              className="bg-success hover:bg-success/90 text-success-foreground"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add
+              {isTesting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+              Send Test
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            A test email will be sent to verify your SMTP configuration is working correctly
+          </p>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-2">
-            {allowedDomains.map(domain => (
-              <div 
-                key={domain.id}
-                className={`flex items-center justify-between p-3 rounded-lg border ${
-                  domain.is_enabled 
-                    ? "bg-neutral-800/50 border-neutral-700" 
-                    : "bg-neutral-800/20 border-neutral-800 opacity-60"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Mail className="w-4 h-4 text-neutral-500" />
-                  <span className="text-neutral-200">@{domain.domain}</span>
-                  {domain.is_enabled ? (
-                    <Badge className="bg-green-500/10 text-green-400 border-green-500/30 text-xs">
-                      Active
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-neutral-500/10 text-neutral-400 border-neutral-500/30 text-xs">
-                      Disabled
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={domain.is_enabled}
-                    onCheckedChange={() => handleToggleDomain(domain)}
-                  />
+      {/* Allowed Email Domains */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-purple-500" />
+            </div>
+            <div>
+              <CardTitle>Allowed Email Domains</CardTitle>
+              <CardDescription>
+                Restrict registration to specific email domains (leave empty to allow all)
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {allowedDomains.length === 0 ? (
+            <div className="p-4 rounded-lg bg-muted/50 text-center">
+              <p className="text-muted-foreground text-sm">
+                No domain restrictions. All email domains are allowed.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {allowedDomains.map((domain) => (
+                <div
+                  key={domain.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border"
+                >
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      checked={domain.is_enabled}
+                      onCheckedChange={() => handleToggleDomain(domain)}
+                    />
+                    <span className={domain.is_enabled ? "" : "text-muted-foreground line-through"}>
+                      {domain.domain}
+                    </span>
+                  </div>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     onClick={() => handleDeleteDomain(domain)}
-                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {allowedDomains.length === 0 && (
-            <div className="text-center py-8 text-neutral-500">
-              <Mail className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No domains configured.</p>
-              <p className="text-sm">All email domains are currently allowed.</p>
+              ))}
             </div>
           )}
+
+          <div className="flex gap-2 pt-2">
+            <Input
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              placeholder="gmail.com"
+              onKeyDown={(e) => e.key === "Enter" && handleAddDomain()}
+            />
+            <Button onClick={handleAddDomain} disabled={!newDomain.trim()}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Domain
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

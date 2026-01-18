@@ -3,11 +3,62 @@ import { ArrowRight, Play, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-export function HeroSection() {
+interface HeroContent {
+  title: string;
+  subtitle: string;
+  content: string;
+  button_text: string;
+  button_url: string;
+  is_visible: boolean;
+}
+
+interface HeroSectionProps {
+  content?: HeroContent;
+}
+
+export function HeroSection({ content }: HeroSectionProps) {
+  const [heroContent, setHeroContent] = useState<HeroContent | null>(content || null);
+
+  useEffect(() => {
+    if (!content) {
+      const fetchContent = async () => {
+        const { data } = await supabase
+          .from("landing_content")
+          .select("*")
+          .eq("section_key", "hero")
+          .maybeSingle();
+        
+        if (data) {
+          setHeroContent({
+            title: data.title || "Earn & Grow on TikTok",
+            subtitle: data.subtitle || "AI-Powered TikTok Engagement Exchange",
+            content: data.content || "Exchange engagement for TikPoints. Complete tasks to earn, or boost your content with authentic engagement from real users.",
+            button_text: data.button_text || "Start Earning Now",
+            button_url: data.button_url || "/register",
+            is_visible: data.is_visible,
+          });
+        }
+      };
+      fetchContent();
+    }
+  }, [content]);
+
+  // Default values if content not loaded
+  const displayContent = heroContent || {
+    title: "Earn & Grow on TikTok",
+    subtitle: "AI-Powered TikTok Engagement Exchange",
+    content: "Exchange engagement for TikPoints. Complete tasks to earn, or boost your content with authentic engagement from real users.",
+    button_text: "Start Earning Now",
+    button_url: "/register",
+    is_visible: true,
+  };
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
-      {/* Background effects - pointer-events-none to prevent click blocking */}
+      {/* Background effects */}
       <div className="absolute inset-0 bg-background pointer-events-none" />
       <div 
         className="absolute inset-0 opacity-30 pointer-events-none"
@@ -18,7 +69,7 @@ export function HeroSection() {
         }}
       />
       
-      {/* Grid pattern - pointer-events-none */}
+      {/* Grid pattern */}
       <div 
         className="absolute inset-0 opacity-[0.02] pointer-events-none"
         style={{
@@ -37,7 +88,7 @@ export function HeroSection() {
           >
             <Badge variant="glass" className="mb-6 px-4 py-2">
               <Sparkles className="w-4 h-4 mr-2" />
-              AI-Powered TikTok Engagement Exchange
+              {displayContent.subtitle}
             </Badge>
           </motion.div>
 
@@ -47,8 +98,15 @@ export function HeroSection() {
             transition={{ duration: 0.5, delay: 0.1 }}
             className="text-5xl md:text-7xl font-bold mb-6 leading-tight"
           >
-            Earn & Grow on{" "}
-            <span className="gradient-text glow-text">TikTok</span>
+            {displayContent.title.includes("TikTok") ? (
+              <>
+                {displayContent.title.split("TikTok")[0]}
+                <span className="gradient-text glow-text">TikTok</span>
+                {displayContent.title.split("TikTok")[1]}
+              </>
+            ) : (
+              <span className="gradient-text glow-text">{displayContent.title}</span>
+            )}
           </motion.h1>
 
           <motion.p
@@ -57,8 +115,7 @@ export function HeroSection() {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto"
           >
-            Exchange engagement for TikPoints. Complete tasks to earn, or boost your 
-            content with authentic engagement from real users.
+            {displayContent.content}
           </motion.p>
 
           <motion.div
@@ -68,8 +125,8 @@ export function HeroSection() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Button variant="gradient" size="xl" asChild>
-              <Link to="/register">
-                Start Earning Now
+              <Link to={displayContent.button_url || "/register"}>
+                {displayContent.button_text || "Start Earning Now"}
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
