@@ -1,61 +1,59 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Check, Sparkles, Zap, Crown } from "lucide-react";
+import { Coins, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { supabase } from "@/integrations/supabase/client";
+import { Link } from "react-router-dom";
 
-const plans = [
-  {
-    name: "Starter",
-    description: "Perfect for trying out TikPoints",
-    price: "Free",
-    icon: Sparkles,
-    features: [
-      "5 tasks per day",
-      "Basic AI verification",
-      "Standard support",
-      "100 TikPoints welcome bonus",
-    ],
-    cta: "Get Started",
-    popular: false,
-  },
-  {
-    name: "Pro",
-    description: "For serious earners and advertisers",
-    price: "$9.99",
-    period: "/month",
-    icon: Zap,
-    features: [
-      "Unlimited tasks",
-      "Priority AI verification",
-      "Create unlimited ads",
-      "Advanced analytics",
-      "Priority support",
-      "500 TikPoints monthly",
-    ],
-    cta: "Upgrade to Pro",
-    popular: true,
-  },
-  {
-    name: "Business",
-    description: "For agencies and power users",
-    price: "$29.99",
-    period: "/month",
-    icon: Crown,
-    features: [
-      "Everything in Pro",
-      "Team collaboration",
-      "API access",
-      "Custom integrations",
-      "Dedicated account manager",
-      "2000 TikPoints monthly",
-    ],
-    cta: "Contact Sales",
-    popular: false,
-  },
-];
+interface PricingSettings {
+  points_amount: number;
+  currency_amount: number;
+  currency_symbol: string;
+}
 
 export function PricingSection() {
+  const [selectedPoints, setSelectedPoints] = useState<number>(100);
+  const [pricing, setPricing] = useState<PricingSettings>({
+    points_amount: 10,
+    currency_amount: 5,
+    currency_symbol: "₦",
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPricing = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("platform_settings")
+          .select("value")
+          .eq("key", "pricing_settings")
+          .maybeSingle();
+
+        if (!error && data?.value) {
+          const settings = data.value as unknown as PricingSettings;
+          setPricing(settings);
+        }
+      } catch (err) {
+        console.error("Error fetching pricing:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchPricing();
+  }, []);
+
+  // Calculate price based on selected points
+  const calculatePrice = (points: number) => {
+    const pricePerPoint = pricing.currency_amount / pricing.points_amount;
+    return (points * pricePerPoint).toFixed(2);
+  };
+
+  // Quick select options
+  const quickOptions = [50, 100, 250, 500, 1000, 2500];
+
   return (
     <section className="py-24 relative" id="pricing">
       <div className="container mx-auto px-4">
@@ -69,69 +67,89 @@ export function PricingSection() {
             Simple <span className="gradient-text">Pricing</span>
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Choose the plan that works best for you. Upgrade or downgrade anytime.
+            Purchase TikPoints instantly. Slide to select your amount.
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {plans.map((plan, index) => (
-            <motion.div
-              key={plan.name}
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: index * 0.1 }}
-              className="relative"
-            >
-              {plan.popular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
-                  <Badge variant="gradient" className="px-4 py-1">
-                    Most Popular
-                  </Badge>
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="max-w-2xl mx-auto"
+        >
+          <Card variant="elevated" className="border-primary/30">
+            <CardHeader className="text-center pb-2">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-4">
+                <Calculator className="w-8 h-8 text-primary-foreground" />
+              </div>
+              <CardTitle className="text-2xl">Points Calculator</CardTitle>
+              <p className="text-muted-foreground text-sm">
+                {pricing.points_amount} points = {pricing.currency_symbol}{pricing.currency_amount}
+              </p>
+            </CardHeader>
+            
+            <CardContent className="space-y-8">
+              {/* Main display */}
+              <div className="text-center py-6 px-4 rounded-2xl bg-gradient-to-br from-primary/10 via-purple-500/5 to-accent/10 border border-primary/20">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <Coins className="w-8 h-8 text-primary" />
+                  <span className="text-5xl md:text-6xl font-bold gradient-text">
+                    {selectedPoints.toLocaleString()}
+                  </span>
                 </div>
-              )}
-              
-              <Card 
-                variant={plan.popular ? "elevated" : "default"}
-                className={`h-full ${plan.popular ? "border-primary/50" : ""}`}
-              >
-                <CardHeader className="text-center pb-4">
-                  <div className={`w-12 h-12 mx-auto rounded-xl ${plan.popular ? "bg-primary" : "bg-muted"} flex items-center justify-center mb-4`}>
-                    <plan.icon className={`w-6 h-6 ${plan.popular ? "text-primary-foreground" : "text-foreground"}`} />
-                  </div>
-                  <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                  <p className="text-muted-foreground text-sm">{plan.description}</p>
-                </CardHeader>
+                <p className="text-muted-foreground">TikPoints</p>
                 
-                <CardContent className="text-center">
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    {plan.period && (
-                      <span className="text-muted-foreground">{plan.period}</span>
-                    )}
-                  </div>
-                  
-                  <ul className="space-y-3 mb-8 text-left">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-center gap-3">
-                        <Check className="w-5 h-5 text-success flex-shrink-0" />
-                        <span className="text-sm">{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  
-                  <Button 
-                    variant={plan.popular ? "gradient" : "outline"} 
-                    className="w-full"
-                    size="lg"
+                <div className="mt-4 pt-4 border-t border-border/50">
+                  <span className="text-3xl md:text-4xl font-bold">
+                    {pricing.currency_symbol}{calculatePrice(selectedPoints)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Slider */}
+              <div className="px-2">
+                <Slider
+                  value={[selectedPoints]}
+                  onValueChange={(value) => setSelectedPoints(value[0])}
+                  min={10}
+                  max={5000}
+                  step={10}
+                  className="py-4"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-2">
+                  <span>10 pts</span>
+                  <span>5,000 pts</span>
+                </div>
+              </div>
+
+              {/* Quick select buttons */}
+              <div className="grid grid-cols-3 gap-2">
+                {quickOptions.map((points) => (
+                  <Button
+                    key={points}
+                    variant={selectedPoints === points ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSelectedPoints(points)}
+                    className={selectedPoints === points ? "bg-primary" : ""}
                   >
-                    {plan.cta}
+                    {points.toLocaleString()} pts
                   </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
+                ))}
+              </div>
+
+              {/* CTA Button */}
+              <Button variant="gradient" size="xl" className="w-full" asChild>
+                <Link to="/register">
+                  Buy {selectedPoints.toLocaleString()} Points for {pricing.currency_symbol}{calculatePrice(selectedPoints)}
+                </Link>
+              </Button>
+
+              <p className="text-center text-xs text-muted-foreground">
+                Secure payment powered by Paystack. Points are credited instantly.
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     </section>
   );
