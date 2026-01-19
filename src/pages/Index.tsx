@@ -159,7 +159,7 @@ const Index = () => {
     );
   }
 
-  // Prepare hero content from DB
+  // Prepare content for each section from DB
   const heroContent = sections.hero ? {
     title: sections.hero.title || "Earn & Grow on TikTok",
     subtitle: sections.hero.subtitle || "AI-Powered TikTok Engagement Exchange",
@@ -169,6 +169,27 @@ const Index = () => {
     is_visible: sections.hero.is_visible,
   } : undefined;
 
+  const statsContent = sections.stats ? {
+    title: sections.stats.title || "Our Stats",
+    subtitle: sections.stats.subtitle || "Join our growing community",
+    content: sections.stats.content || "",
+    is_visible: sections.stats.is_visible,
+  } : undefined;
+
+  const howItWorksContent = sections.how_it_works ? {
+    title: sections.how_it_works.title || "How It Works",
+    subtitle: sections.how_it_works.subtitle || "Start earning TikPoints in minutes with our simple 4-step process",
+    content: sections.how_it_works.content || "",
+    is_visible: sections.how_it_works.is_visible,
+  } : undefined;
+
+  const featuresContent = sections.features ? {
+    title: sections.features.title || "AI-Powered Verification",
+    subtitle: sections.features.subtitle || "Why Choose Us",
+    content: sections.features.content || "",
+    is_visible: sections.features.is_visible,
+  } : undefined;
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -176,17 +197,17 @@ const Index = () => {
       {/* Top Banner Ad */}
       <AdBanner adType="banner_top" className="w-full flex justify-center py-2 bg-muted/30" />
       
-      {/* Hero Section - pass DB content */}
-      <HeroSection content={heroContent} />
+      {/* Hero Section */}
+      {sections.hero?.is_visible !== false && <HeroSection content={heroContent} />}
       
       {/* Stats Section */}
-      {sections.stats?.is_visible !== false && <StatsSection />}
+      {sections.stats?.is_visible !== false && <StatsSection content={statsContent} />}
       
       {/* How It Works */}
-      {sections.how_it_works?.is_visible !== false && <HowItWorks />}
+      {sections.how_it_works?.is_visible !== false && <HowItWorks content={howItWorksContent} />}
       
       {/* Features Section */}
-      {sections.features?.is_visible !== false && <FeaturesSection />}
+      {sections.features?.is_visible !== false && <FeaturesSection content={featuresContent} />}
       
       {/* Pricing Section */}
       <PricingSection />

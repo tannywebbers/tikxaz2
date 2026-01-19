@@ -1,8 +1,16 @@
 import { motion } from "framer-motion";
-import { Brain, Eye, CheckCircle, ShieldCheck } from "lucide-react";
+import { Brain, Eye, CheckCircle, ShieldCheck, LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-const features = [
+interface Feature {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
+
+const defaultFeatures: Feature[] = [
   {
     icon: Eye,
     title: "Screenshot Analysis",
@@ -25,7 +33,66 @@ const features = [
   },
 ];
 
-export function FeaturesSection() {
+interface FeaturesContent {
+  title: string;
+  subtitle: string;
+  content: string;
+  is_visible: boolean;
+}
+
+interface FeaturesSectionProps {
+  content?: FeaturesContent;
+}
+
+export function FeaturesSection({ content }: FeaturesSectionProps) {
+  const [featuresContent, setFeaturesContent] = useState<FeaturesContent | null>(content || null);
+
+  useEffect(() => {
+    if (!content) {
+      const fetchContent = async () => {
+        const { data } = await supabase
+          .from("landing_content")
+          .select("*")
+          .eq("section_key", "features")
+          .maybeSingle();
+        
+        if (data) {
+          setFeaturesContent({
+            title: data.title || "AI-Powered Verification",
+            subtitle: data.subtitle || "Why Choose Us",
+            content: data.content || "Our cutting-edge AI technology ensures every task is completed authentically.",
+            is_visible: data.is_visible,
+          });
+        }
+      };
+      fetchContent();
+    }
+  }, [content]);
+
+  const displayContent = featuresContent || {
+    title: "AI-Powered Verification",
+    subtitle: "Why Choose Us",
+    content: "Our cutting-edge AI technology ensures every task is completed authentically. No more manual reviews, no more waiting – just instant, accurate verification.",
+    is_visible: true,
+  };
+
+  // Parse features from content if available (JSON format)
+  let features = defaultFeatures;
+  if (displayContent.content) {
+    try {
+      const parsed = JSON.parse(displayContent.content);
+      if (Array.isArray(parsed)) {
+        features = parsed.map((f: any, i: number) => ({
+          icon: [Eye, Brain, CheckCircle, ShieldCheck][i % 4],
+          title: f.title || defaultFeatures[i]?.title || "Feature",
+          description: f.description || defaultFeatures[i]?.description || "",
+        }));
+      }
+    } catch {
+      // Content is not JSON, use as description text
+    }
+  }
+
   return (
     <section className="py-24 relative" id="features">
       <div className="container mx-auto px-4">
@@ -36,11 +103,13 @@ export function FeaturesSection() {
             viewport={{ once: true }}
           >
             <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              AI-Powered <span className="gradient-text">Verification</span>
+              {displayContent.title.split(" ").slice(0, -1).join(" ")}{" "}
+              <span className="gradient-text">{displayContent.title.split(" ").slice(-1)}</span>
             </h2>
             <p className="text-muted-foreground text-lg mb-8">
-              Our cutting-edge AI technology ensures every task is completed authentically. 
-              No more manual reviews, no more waiting – just instant, accurate verification.
+              {typeof displayContent.content === 'string' && !displayContent.content.startsWith('[') 
+                ? displayContent.content 
+                : "Our cutting-edge AI technology ensures every task is completed authentically. No more manual reviews, no more waiting – just instant, accurate verification."}
             </p>
             
             <div className="grid sm:grid-cols-2 gap-4">

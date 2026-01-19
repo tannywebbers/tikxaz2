@@ -1,8 +1,18 @@
 import { motion } from "framer-motion";
-import { Heart, MessageCircle, Bookmark, Play, ArrowRight } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Play, ArrowRight, LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
-const steps = [
+interface Step {
+  step: number;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  color: string;
+}
+
+const defaultSteps: Step[] = [
   {
     step: 1,
     title: "Browse Tasks",
@@ -33,7 +43,70 @@ const steps = [
   },
 ];
 
-export function HowItWorks() {
+interface HowItWorksContent {
+  title: string;
+  subtitle: string;
+  content: string;
+  is_visible: boolean;
+}
+
+interface HowItWorksProps {
+  content?: HowItWorksContent;
+}
+
+export function HowItWorks({ content }: HowItWorksProps) {
+  const [howContent, setHowContent] = useState<HowItWorksContent | null>(content || null);
+
+  useEffect(() => {
+    if (!content) {
+      const fetchContent = async () => {
+        const { data } = await supabase
+          .from("landing_content")
+          .select("*")
+          .eq("section_key", "how_it_works")
+          .maybeSingle();
+        
+        if (data) {
+          setHowContent({
+            title: data.title || "How It Works",
+            subtitle: data.subtitle || "Start earning TikPoints in minutes with our simple 4-step process",
+            content: data.content || "",
+            is_visible: data.is_visible,
+          });
+        }
+      };
+      fetchContent();
+    }
+  }, [content]);
+
+  const displayContent = howContent || {
+    title: "How It Works",
+    subtitle: "Start earning TikPoints in minutes with our simple 4-step process",
+    content: "",
+    is_visible: true,
+  };
+
+  // Parse steps from content if available (JSON format)
+  let steps = defaultSteps;
+  if (displayContent.content) {
+    try {
+      const parsed = JSON.parse(displayContent.content);
+      if (Array.isArray(parsed)) {
+        const icons = [Play, Heart, MessageCircle, Bookmark];
+        const colors = ["from-primary to-purple-500", "from-purple-500 to-accent", "from-accent to-cyan-400", "from-cyan-400 to-primary"];
+        steps = parsed.map((s: any, i: number) => ({
+          step: i + 1,
+          title: s.title || defaultSteps[i]?.title || `Step ${i + 1}`,
+          description: s.description || defaultSteps[i]?.description || "",
+          icon: icons[i % 4],
+          color: colors[i % 4],
+        }));
+      }
+    } catch {
+      // Content is not JSON, ignore
+    }
+  }
+
   return (
     <section className="py-24 relative" id="how-it-works">
       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-secondary/20 to-transparent" />
@@ -46,10 +119,18 @@ export function HowItWorks() {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            How It <span className="gradient-text">Works</span>
+            {displayContent.title.includes("Works") ? (
+              <>
+                {displayContent.title.split("Works")[0]}
+                <span className="gradient-text">Works</span>
+                {displayContent.title.split("Works")[1]}
+              </>
+            ) : (
+              <>How It <span className="gradient-text">Works</span></>
+            )}
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Start earning TikPoints in minutes with our simple 4-step process
+            {displayContent.subtitle}
           </p>
         </motion.div>
 
