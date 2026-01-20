@@ -176,6 +176,96 @@ export type Database = {
         }
         Relationships: []
       }
+      app_settings: {
+        Row: {
+          accent_color: string | null
+          app_description: string | null
+          app_name: string | null
+          created_at: string
+          favicon_url: string | null
+          id: string
+          logo_url: string | null
+          meta_description: string | null
+          meta_title: string | null
+          platform_display_name_label: string | null
+          platform_name: string | null
+          platform_username_label: string | null
+          points_name: string | null
+          points_short_name: string | null
+          primary_color: string | null
+          updated_at: string
+        }
+        Insert: {
+          accent_color?: string | null
+          app_description?: string | null
+          app_name?: string | null
+          created_at?: string
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          platform_display_name_label?: string | null
+          platform_name?: string | null
+          platform_username_label?: string | null
+          points_name?: string | null
+          points_short_name?: string | null
+          primary_color?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accent_color?: string | null
+          app_description?: string | null
+          app_name?: string | null
+          created_at?: string
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
+          platform_display_name_label?: string | null
+          platform_name?: string | null
+          platform_username_label?: string | null
+          points_name?: string | null
+          points_short_name?: string | null
+          primary_color?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      email_verifications: {
+        Row: {
+          code: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          user_id: string | null
+          verification_type: string
+          verified_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          email: string
+          expires_at: string
+          id?: string
+          user_id?: string | null
+          verification_type?: string
+          verified_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          user_id?: string | null
+          verification_type?: string
+          verified_at?: string | null
+        }
+        Relationships: []
+      }
       follow_verifications: {
         Row: {
           ad_id: string
@@ -372,12 +462,15 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          ban_reason: string | null
+          banned_at: string | null
           country: string | null
           created_at: string
           display_name_changed_at: string | null
           email: string
           first_name: string | null
           id: string
+          is_banned: boolean | null
           last_name: string | null
           tik_points: number
           tiktok_name: string | null
@@ -387,12 +480,15 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           country?: string | null
           created_at?: string
           display_name_changed_at?: string | null
           email: string
           first_name?: string | null
           id?: string
+          is_banned?: boolean | null
           last_name?: string | null
           tik_points?: number
           tiktok_name?: string | null
@@ -402,12 +498,15 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           country?: string | null
           created_at?: string
           display_name_changed_at?: string | null
           email?: string
           first_name?: string | null
           id?: string
+          is_banned?: boolean | null
           last_name?: string | null
           tik_points?: number
           tiktok_name?: string | null
