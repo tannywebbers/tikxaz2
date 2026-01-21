@@ -58,6 +58,7 @@ export default function Register() {
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [showOTPInput, setShowOTPInput] = useState(false);
   const [otpValue, setOtpValue] = useState("");
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const [generatedOTP, setGeneratedOTP] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
@@ -120,28 +121,57 @@ export default function Register() {
     return allowedDomains.includes(domain);
   };
 
-  const generateOTP = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
-
   const sendVerificationEmail = async () => {
-    const otp = generateOTP();
-    setGeneratedOTP(otp);
-
     try {
-      // In a real implementation, this would call an edge function to send the email
-      // For now, we'll simulate it and show the OTP in a toast (for testing)
+      const response = await supabase.functions.invoke('send-verification-email', {
+        body: { 
+          email: formData.email, 
+          type: 'code' 
+        }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to send verification email');
+      }
+
       toast({
         title: "Verification Code Sent",
-        description: `A verification code has been sent to ${formData.email}. (Test mode: ${otp})`,
+        description: `A verification code has been sent to ${formData.email}. Please check your inbox.`,
       });
       return true;
     } catch (error) {
+      console.error('Error sending verification email:', error);
       toast({
         variant: "destructive",
         title: "Failed to send verification email",
-        description: "Please try again.",
+        description: error instanceof Error ? error.message : "Please try again.",
       });
+      return false;
+    }
+  };
+
+  const verifyCode = async (code: string): Promise<boolean> => {
+    try {
+      // Check the code against the database
+      const { data, error } = await supabase
+        .from('email_verifications')
+        .select('*')
+        .eq('email', formData.email)
+        .eq('code', code)
+        .eq('verification_type', 'code')
+        .is('verified_at', null)
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error || !data) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error verifying code:', error);
       return false;
     }
   };
@@ -168,9 +198,9 @@ export default function Register() {
 
     // If email verification is enabled and SMTP is configured
     if (emailVerificationEnabled && smtpConfigured && !showOTPInput) {
-      setIsLoading(true);
+      setIsSendingCode(true);
       const sent = await sendVerificationEmail();
-      setIsLoading(false);
+      setIsSendingCode(false);
       if (sent) {
         setShowOTPInput(true);
       }
@@ -179,7 +209,8 @@ export default function Register() {
 
     // If showing OTP input, verify it first
     if (showOTPInput) {
-      if (otpValue !== generatedOTP) {
+      const isValid = await verifyCode(otpValue);
+      if (!isValid) {
         toast({
           variant: "destructive",
           title: "Invalid verification code",
@@ -205,16 +236,19 @@ export default function Register() {
   };
 
   const handleVerifyOTP = async () => {
-    if (otpValue !== generatedOTP) {
+    setIsVerifying(true);
+    const isValid = await verifyCode(otpValue);
+    
+    if (!isValid) {
+      setIsVerifying(false);
       toast({
         variant: "destructive",
         title: "Invalid verification code",
-        description: "Please enter the correct code sent to your email.",
+        description: "Please enter the correct code sent to your email or it may have expired.",
       });
       return;
     }
 
-    setIsVerifying(true);
     const { error } = await signUp(formData.email, formData.password, {
       first_name: formData.firstName,
       last_name: formData.lastName,
