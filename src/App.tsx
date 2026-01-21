@@ -29,6 +29,8 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import AdminLandingCMS from "./pages/admin/AdminLandingCMS";
 import AdminEmailConfig from "./pages/admin/AdminEmailConfig";
 import AdminAdsSettings from "./pages/admin/AdminAdsSettings";
+import AdminVisualEditor from "./pages/admin/AdminVisualEditor";
+import AdminAppSettings from "./pages/admin/AdminAppSettings";
 
 const queryClient = new QueryClient();
 
@@ -70,6 +72,8 @@ const App = () => (
                 <Route path="prompts" element={<AdminPrompts />} />
                 <Route path="settings" element={<AdminSettings />} />
                 <Route path="landing" element={<AdminLandingCMS />} />
+                <Route path="visual-editor" element={<AdminVisualEditor />} />
+                <Route path="app-settings" element={<AdminAppSettings />} />
                 <Route path="email" element={<AdminEmailConfig />} />
                 <Route path="ads" element={<AdminAdsSettings />} />
               </Route>

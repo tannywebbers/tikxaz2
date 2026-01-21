@@ -13,7 +13,9 @@ import {
   Mail,
   Megaphone,
   Menu,
-  X
+  X,
+  Palette,
+  Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,7 +29,9 @@ const navItems = [
   { icon: Users, label: "Users", href: "/baki/stage/admin/users" },
   { icon: Brain, label: "AI Config", href: "/baki/stage/admin/ai-config" },
   { icon: MessageSquare, label: "AI Prompts", href: "/baki/stage/admin/prompts" },
+  { icon: Eye, label: "Visual Editor", href: "/baki/stage/admin/visual-editor" },
   { icon: Globe, label: "Landing CMS", href: "/baki/stage/admin/landing" },
+  { icon: Palette, label: "App Settings", href: "/baki/stage/admin/app-settings" },
   { icon: Mail, label: "Email Config", href: "/baki/stage/admin/email" },
   { icon: Megaphone, label: "Ads Settings", href: "/baki/stage/admin/ads" },
   { icon: Settings, label: "Settings", href: "/baki/stage/admin/settings" },
