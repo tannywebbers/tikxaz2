@@ -1,100 +1,134 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Coins, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { FooterBannerAd } from "@/components/ads/GlobalAdSlots";
+import { useAuth } from "@/hooks/use-auth";
+import { 
+  FaFacebook, 
+  FaTwitter, 
+  FaInstagram, 
+  FaTiktok, 
+  FaYoutube,
+  FaWhatsapp,
+  FaTelegram
+} from "react-icons/fa";
 
-interface FooterContent {
-  app_name: string;
-  description: string;
-  platform_links: { label: string; url: string }[];
-  support_links: { label: string; url: string }[];
-  legal_links: { label: string; url: string }[];
-  copyright: string;
+interface SocialLinks {
+  facebook?: string;
+  twitter?: string;
+  instagram?: string;
+  tiktok?: string;
+  youtube?: string;
 }
 
-const defaultContent: FooterContent = {
+interface FooterSettings {
+  app_name: string;
+  app_description: string;
+  social_links: SocialLinks;
+  community_link: string;
+  community_label: string;
+  support_email: string;
+}
+
+const defaultSettings: FooterSettings = {
   app_name: "TikPoints",
-  description: "The leading platform for TikTok engagement exchange. Earn and advertise smarter.",
-  platform_links: [
-    { label: "Browse Tasks", url: "/tasks" },
-    { label: "Create Ad", url: "/create-ad" },
-    { label: "Wallet", url: "/wallet" },
-    { label: "Leaderboard", url: "/leaderboard" },
-  ],
-  support_links: [
-    { label: "Help Center", url: "#" },
-    { label: "Contact Us", url: "#" },
-    { label: "FAQs", url: "#" },
-    { label: "Community", url: "#" },
-  ],
-  legal_links: [
-    { label: "Terms of Service", url: "#" },
-    { label: "Privacy Policy", url: "#" },
-    { label: "Cookie Policy", url: "#" },
-  ],
-  copyright: "TikPoints Exchange. All rights reserved.",
+  app_description: "The leading platform for TikTok engagement exchange. Earn and advertise smarter.",
+  social_links: {},
+  community_link: "",
+  community_label: "Community",
+  support_email: "",
 };
 
+// Smart link component that handles auth state
+function SmartLink({ 
+  to, 
+  children, 
+  requiresAuth = false 
+}: { 
+  to: string; 
+  children: React.ReactNode; 
+  requiresAuth?: boolean;
+}) {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (requiresAuth && !user) {
+      e.preventDefault();
+      navigate("/login");
+    }
+  };
+
+  const actualPath = requiresAuth && user ? `/dashboard${to}` : to;
+  
+  return (
+    <Link 
+      to={requiresAuth && !user ? "/login" : actualPath}
+      onClick={handleClick}
+      className="hover:text-primary transition-colors"
+    >
+      {children}
+    </Link>
+  );
+}
+
 export function Footer() {
-  const [content, setContent] = useState<FooterContent>(defaultContent);
+  const [settings, setSettings] = useState<FooterSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetchFooterContent();
+    fetchSettings();
   }, []);
 
-  const fetchFooterContent = async () => {
+  const fetchSettings = async () => {
     try {
-      // Fetch footer section from landing_content
-      const { data: footerData } = await supabase
-        .from("landing_content")
-        .select("*")
-        .eq("section_key", "footer")
-        .eq("is_visible", true)
-        .maybeSingle();
-
-      // Also fetch app settings for app name
-      const { data: appSettings } = await supabase
+      const { data } = await supabase
         .from("app_settings")
-        .select("app_name, app_description")
+        .select("app_name, app_description, social_links, community_link, community_label, support_email")
         .limit(1)
         .maybeSingle();
 
-      if (footerData?.content) {
-        try {
-          const parsed = JSON.parse(footerData.content);
-          setContent({
-            ...defaultContent,
-            ...parsed,
-            app_name: appSettings?.app_name || parsed.app_name || defaultContent.app_name,
-            description: footerData.subtitle || appSettings?.app_description || defaultContent.description,
-            copyright: parsed.copyright || `${appSettings?.app_name || defaultContent.app_name} Exchange. All rights reserved.`,
-          });
-        } catch {
-          // If parsing fails, use defaults with app settings
-          if (appSettings) {
-            setContent(prev => ({
-              ...prev,
-              app_name: appSettings.app_name || prev.app_name,
-              description: appSettings.app_description || prev.description,
-            }));
-          }
-        }
-      } else if (appSettings) {
-        setContent(prev => ({
-          ...prev,
-          app_name: appSettings.app_name || prev.app_name,
-          description: appSettings.app_description || prev.description,
-          copyright: `${appSettings.app_name || prev.app_name} Exchange. All rights reserved.`,
-        }));
+      if (data) {
+        setSettings({
+          app_name: data.app_name || defaultSettings.app_name,
+          app_description: data.app_description || defaultSettings.app_description,
+          social_links: (data.social_links as SocialLinks) || {},
+          community_link: data.community_link || "",
+          community_label: data.community_label || "Community",
+          support_email: data.support_email || "",
+        });
       }
     } catch (error) {
-      console.error("Error fetching footer content:", error);
+      console.error("Error fetching footer settings:", error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const getSocialIcon = (platform: string) => {
+    const iconClass = "w-5 h-5";
+    switch (platform) {
+      case "facebook": return <FaFacebook className={iconClass} />;
+      case "twitter": return <FaTwitter className={iconClass} />;
+      case "instagram": return <FaInstagram className={iconClass} />;
+      case "tiktok": return <FaTiktok className={iconClass} />;
+      case "youtube": return <FaYoutube className={iconClass} />;
+      default: return null;
+    }
+  };
+
+  const getCommunityIcon = () => {
+    if (settings.community_link.includes("whatsapp")) {
+      return <FaWhatsapp className="w-4 h-4 mr-2" />;
+    }
+    if (settings.community_link.includes("telegram") || settings.community_link.includes("t.me")) {
+      return <FaTelegram className="w-4 h-4 mr-2" />;
+    }
+    return null;
+  };
+
+  const hasSocialLinks = Object.values(settings.social_links).some(link => link && link.trim());
 
   return (
     <footer className="py-12 border-t border-border">
@@ -103,60 +137,118 @@ export function Footer() {
       
       <div className="container mx-auto px-4">
         <div className="grid md:grid-cols-4 gap-8">
+          {/* Brand Column */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                 <Coins className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold">{content.app_name}</span>
+              <span className="text-xl font-bold">{settings.app_name}</span>
             </Link>
-            <p className="text-muted-foreground text-sm">
-              {content.description}
+            <p className="text-muted-foreground text-sm mb-4">
+              {settings.app_description}
             </p>
+            
+            {/* Social Media Buttons */}
+            {hasSocialLinks && (
+              <div className="flex gap-3 mt-4">
+                {Object.entries(settings.social_links).map(([platform, url]) => (
+                  url && url.trim() && (
+                    <a
+                      key={platform}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-9 h-9 rounded-lg bg-muted hover:bg-primary hover:text-primary-foreground transition-colors flex items-center justify-center"
+                      aria-label={platform}
+                    >
+                      {getSocialIcon(platform)}
+                    </a>
+                  )
+                ))}
+              </div>
+            )}
           </div>
           
+          {/* Platform Links */}
           <div>
             <h4 className="font-semibold mb-4">Platform</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              {content.platform_links.map((link, index) => (
-                <li key={index}>
-                  <Link to={link.url} className="hover:text-primary transition-colors">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              <li>
+                <SmartLink to="/tasks" requiresAuth>Browse Tasks</SmartLink>
+              </li>
+              <li>
+                <SmartLink to="/create-ad" requiresAuth>Create Ad</SmartLink>
+              </li>
+              <li>
+                <SmartLink to="/wallet" requiresAuth>Wallet</SmartLink>
+              </li>
             </ul>
           </div>
           
+          {/* Support Links */}
           <div>
             <h4 className="font-semibold mb-4">Support</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              {content.support_links.map((link, index) => (
-                <li key={index}>
-                  <a href={link.url} className="hover:text-primary transition-colors">
-                    {link.label}
+              <li>
+                <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent("openLiveChat"))}
+                  className="hover:text-primary transition-colors"
+                >
+                  Help Center
+                </button>
+              </li>
+              <li>
+                <Link to="/contact" className="hover:text-primary transition-colors">
+                  Contact Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/faqs" className="hover:text-primary transition-colors">
+                  FAQs
+                </Link>
+              </li>
+              {settings.community_link && (
+                <li>
+                  <a 
+                    href={settings.community_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-primary transition-colors flex items-center"
+                  >
+                    {getCommunityIcon()}
+                    {settings.community_label}
                   </a>
                 </li>
-              ))}
+              )}
             </ul>
           </div>
           
+          {/* Legal Links */}
           <div>
             <h4 className="font-semibold mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              {content.legal_links.map((link, index) => (
-                <li key={index}>
-                  <a href={link.url} className="hover:text-primary transition-colors">
-                    {link.label}
-                  </a>
-                </li>
-              ))}
+              <li>
+                <Link to="/terms" className="hover:text-primary transition-colors">
+                  Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy" className="hover:text-primary transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link to="/cookies" className="hover:text-primary transition-colors">
+                  Cookie Policy
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
         
         <div className="border-t border-border mt-12 pt-8 text-center text-sm text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} {content.copyright}</p>
+          <p>&copy; {new Date().getFullYear()} {settings.app_name} Exchange. All rights reserved.</p>
         </div>
       </div>
     </footer>
