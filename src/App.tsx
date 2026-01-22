@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { LiveChat } from "@/components/LiveChat";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -16,6 +17,13 @@ import CreateAd from "./pages/CreateAd";
 import TaskBrowser from "./pages/TaskBrowser";
 import MyAds from "./pages/MyAds";
 import NotFound from "./pages/NotFound";
+
+// Legal & Info pages
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsOfService from "./pages/TermsOfService";
+import CookiesPolicy from "./pages/CookiesPolicy";
+import FAQs from "./pages/FAQs";
+import ContactUs from "./pages/ContactUs";
 
 // Admin imports (isolated)
 import AdminLayout from "./pages/admin/AdminLayout";
@@ -47,6 +55,13 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              
+              {/* Legal & Info pages */}
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/cookies" element={<CookiesPolicy />} />
+              <Route path="/faqs" element={<FAQs />} />
+              <Route path="/contact" element={<ContactUs />} />
               
               {/* User dashboard routes */}
               <Route path="/dashboard" element={
@@ -80,6 +95,9 @@ const App = () => (
 
               <Route path="*" element={<NotFound />} />
             </Routes>
+            
+            {/* Global Live Chat */}
+            <LiveChat />
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

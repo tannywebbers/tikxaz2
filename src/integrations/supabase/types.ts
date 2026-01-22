@@ -181,6 +181,8 @@ export type Database = {
           accent_color: string | null
           app_description: string | null
           app_name: string | null
+          community_label: string | null
+          community_link: string | null
           created_at: string
           favicon_url: string | null
           id: string
@@ -193,12 +195,16 @@ export type Database = {
           points_name: string | null
           points_short_name: string | null
           primary_color: string | null
+          social_links: Json | null
+          support_email: string | null
           updated_at: string
         }
         Insert: {
           accent_color?: string | null
           app_description?: string | null
           app_name?: string | null
+          community_label?: string | null
+          community_link?: string | null
           created_at?: string
           favicon_url?: string | null
           id?: string
@@ -211,12 +217,16 @@ export type Database = {
           points_name?: string | null
           points_short_name?: string | null
           primary_color?: string | null
+          social_links?: Json | null
+          support_email?: string | null
           updated_at?: string
         }
         Update: {
           accent_color?: string | null
           app_description?: string | null
           app_name?: string | null
+          community_label?: string | null
+          community_link?: string | null
           created_at?: string
           favicon_url?: string | null
           id?: string
@@ -229,7 +239,72 @@ export type Database = {
           points_name?: string | null
           points_short_name?: string | null
           primary_color?: string | null
+          social_links?: Json | null
+          support_email?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      chat_messages: {
+        Row: {
+          created_at: string
+          id: string
+          is_from_user: boolean
+          is_read: boolean
+          message: string
+          moderator_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_from_user?: boolean
+          is_read?: boolean
+          message: string
+          moderator_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_from_user?: boolean
+          is_read?: boolean
+          message?: string
+          moderator_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      chat_sessions: {
+        Row: {
+          assigned_moderator_id: string | null
+          closed_at: string | null
+          created_at: string
+          id: string
+          status: string
+          subject: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_moderator_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assigned_moderator_id?: string | null
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          subject?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

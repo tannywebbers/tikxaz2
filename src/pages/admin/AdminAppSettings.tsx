@@ -8,8 +8,18 @@ import {
   Image,
   Type,
   Smartphone,
-  Hash
+  Hash,
+  Share2,
+  MessageCircle,
+  Mail
 } from "lucide-react";
+import { 
+  FaFacebook, 
+  FaTwitter, 
+  FaInstagram, 
+  FaTiktok, 
+  FaYoutube 
+} from "react-icons/fa";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +28,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface SocialLinks {
+  facebook: string;
+  twitter: string;
+  instagram: string;
+  tiktok: string;
+  youtube: string;
+}
 
 interface AppSettings {
   id?: string;
@@ -34,6 +52,10 @@ interface AppSettings {
   platform_display_name_label: string;
   points_name: string;
   points_short_name: string;
+  social_links: SocialLinks;
+  community_link: string;
+  community_label: string;
+  support_email: string;
 }
 
 const defaultSettings: AppSettings = {
@@ -50,6 +72,16 @@ const defaultSettings: AppSettings = {
   platform_display_name_label: "TikTok Display Name",
   points_name: "TikPoints",
   points_short_name: "pts",
+  social_links: {
+    facebook: "",
+    twitter: "",
+    instagram: "",
+    tiktok: "",
+    youtube: "",
+  },
+  community_link: "",
+  community_label: "Community",
+  support_email: "",
 };
 
 export default function AdminAppSettings() {
@@ -74,7 +106,11 @@ export default function AdminAppSettings() {
       if (error && error.code !== 'PGRST116') throw error;
       
       if (data) {
-        setSettings(data as AppSettings);
+        setSettings({
+          ...defaultSettings,
+          ...data,
+          social_links: (data.social_links as unknown as SocialLinks) || defaultSettings.social_links,
+        });
       }
     } catch (error) {
       console.error("Error fetching app settings:", error);
@@ -86,16 +122,21 @@ export default function AdminAppSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const saveData = {
+        ...settings,
+        social_links: settings.social_links as unknown as Record<string, string>,
+      };
+      
       if (settings.id) {
         const { error } = await supabase
           .from("app_settings")
-          .update(settings)
+          .update(saveData)
           .eq("id", settings.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("app_settings")
-          .insert([settings]);
+          .insert([saveData]);
         if (error) throw error;
       }
 
@@ -121,6 +162,13 @@ export default function AdminAppSettings() {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const updateSocialLink = (platform: keyof SocialLinks, value: string) => {
+    setSettings(prev => ({
+      ...prev,
+      social_links: { ...prev.social_links, [platform]: value },
+    }));
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
@@ -135,7 +183,7 @@ export default function AdminAppSettings() {
         <div>
           <h1 className="text-2xl font-semibold">App Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure your app branding and platform settings
+            Configure your app branding, social links, and platform settings
           </p>
         </div>
         <Button onClick={handleSave} disabled={isSaving}>
@@ -145,7 +193,7 @@ export default function AdminAppSettings() {
       </div>
 
       <Tabs defaultValue="branding" className="space-y-6">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="branding">
             <Palette className="w-4 h-4 mr-2" /> Branding
           </TabsTrigger>
@@ -154,6 +202,9 @@ export default function AdminAppSettings() {
           </TabsTrigger>
           <TabsTrigger value="platform">
             <Smartphone className="w-4 h-4 mr-2" /> Platform
+          </TabsTrigger>
+          <TabsTrigger value="social">
+            <Share2 className="w-4 h-4 mr-2" /> Social & Community
           </TabsTrigger>
         </TabsList>
 
@@ -404,6 +455,135 @@ export default function AdminAppSettings() {
                 <p className="text-sm text-muted-foreground">
                   Form label: "<strong>{settings.platform_username_label}</strong>"
                 </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="social" className="space-y-6">
+          {/* Social Media Links */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Share2 className="w-5 h-5" /> Social Media Links
+              </CardTitle>
+              <CardDescription>
+                Add your social media profile links. These will appear in the footer.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FaFacebook className="w-4 h-4 text-blue-600" /> Facebook
+                  </Label>
+                  <Input
+                    value={settings.social_links.facebook}
+                    onChange={(e) => updateSocialLink("facebook", e.target.value)}
+                    placeholder="https://facebook.com/yourpage"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FaTwitter className="w-4 h-4 text-sky-500" /> Twitter / X
+                  </Label>
+                  <Input
+                    value={settings.social_links.twitter}
+                    onChange={(e) => updateSocialLink("twitter", e.target.value)}
+                    placeholder="https://twitter.com/yourhandle"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FaInstagram className="w-4 h-4 text-pink-500" /> Instagram
+                  </Label>
+                  <Input
+                    value={settings.social_links.instagram}
+                    onChange={(e) => updateSocialLink("instagram", e.target.value)}
+                    placeholder="https://instagram.com/yourprofile"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FaTiktok className="w-4 h-4" /> TikTok
+                  </Label>
+                  <Input
+                    value={settings.social_links.tiktok}
+                    onChange={(e) => updateSocialLink("tiktok", e.target.value)}
+                    placeholder="https://tiktok.com/@yourprofile"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FaYoutube className="w-4 h-4 text-red-600" /> YouTube
+                  </Label>
+                  <Input
+                    value={settings.social_links.youtube}
+                    onChange={(e) => updateSocialLink("youtube", e.target.value)}
+                    placeholder="https://youtube.com/@yourchannel"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Community Link */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5" /> Community Channel
+              </CardTitle>
+              <CardDescription>
+                Add a link to your WhatsApp channel, Telegram group, or Discord server.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Community Link</Label>
+                  <Input
+                    value={settings.community_link}
+                    onChange={(e) => updateField("community_link", e.target.value)}
+                    placeholder="https://chat.whatsapp.com/... or https://t.me/..."
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    WhatsApp, Telegram, or Discord link
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Link Label</Label>
+                  <Input
+                    value={settings.community_label}
+                    onChange={(e) => updateField("community_label", e.target.value)}
+                    placeholder="Join our Community"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Text shown in the footer
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Support Email */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="w-5 h-5" /> Support Email
+              </CardTitle>
+              <CardDescription>
+                Email address for the Contact Us page.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label>Support Email</Label>
+                <Input
+                  type="email"
+                  value={settings.support_email}
+                  onChange={(e) => updateField("support_email", e.target.value)}
+                  placeholder="support@yourapp.com"
+                />
               </div>
             </CardContent>
           </Card>
