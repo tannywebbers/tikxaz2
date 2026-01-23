@@ -44,6 +44,36 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_totp_secrets: {
+        Row: {
+          backup_codes: string[] | null
+          created_at: string
+          id: string
+          is_verified: boolean
+          secret_encrypted: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          backup_codes?: string[] | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          secret_encrypted: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          backup_codes?: string[] | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean
+          secret_encrypted?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ads: {
         Row: {
           comment_keywords: string[] | null
@@ -477,6 +507,54 @@ export type Database = {
           subtitle?: string | null
           title?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      moderator_permissions: {
+        Row: {
+          can_manage_chat: boolean
+          can_manage_users: boolean
+          can_review_submissions: boolean
+          created_at: string
+          id: string
+          invited_at: string
+          invited_by: string | null
+          is_suspended: boolean
+          pages: string[]
+          suspend_reason: string | null
+          suspended_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_manage_chat?: boolean
+          can_manage_users?: boolean
+          can_review_submissions?: boolean
+          created_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          is_suspended?: boolean
+          pages?: string[]
+          suspend_reason?: string | null
+          suspended_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_manage_chat?: boolean
+          can_manage_users?: boolean
+          can_review_submissions?: boolean
+          created_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          is_suspended?: boolean
+          pages?: string[]
+          suspend_reason?: string | null
+          suspended_at?: string | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

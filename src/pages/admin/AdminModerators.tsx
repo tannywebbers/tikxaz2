@@ -1,0 +1,620 @@
+import { useState, useEffect } from "react";
+import {
+  Users,
+  Plus,
+  Search,
+  Mail,
+  Shield,
+  Trash2,
+  Loader2,
+  Eye,
+  Ban,
+  Check,
+  X,
+  ChevronRight,
+  Clock,
+  RefreshCw,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Textarea } from "@/components/ui/textarea";
+
+interface Moderator {
+  id: string;
+  user_id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  pages: string[];
+  can_manage_chat: boolean;
+  can_review_submissions: boolean;
+  can_manage_users: boolean;
+  is_suspended: boolean;
+  suspend_reason: string | null;
+  invited_at: string;
+}
+
+const AVAILABLE_PAGES = [
+  { key: "dashboard", label: "Dashboard", description: "View platform statistics" },
+  { key: "submissions", label: "Submissions", description: "Review task submissions" },
+  { key: "users", label: "Users", description: "Manage user accounts" },
+  { key: "live-chats", label: "Live Chats", description: "Respond to user support" },
+  { key: "ai-config", label: "AI Config", description: "Configure AI settings" },
+  { key: "prompts", label: "AI Prompts", description: "Manage verification prompts" },
+  { key: "visual-editor", label: "Visual Editor", description: "Edit landing pages" },
+  { key: "app-settings", label: "App Settings", description: "Platform configuration" },
+  { key: "email", label: "Email Config", description: "Email settings" },
+  { key: "ads", label: "Ads Settings", description: "Advertisement configuration" },
+];
+
+export default function AdminModerators() {
+  const [moderators, setModerators] = useState<Moderator[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showViewDialog, setShowViewDialog] = useState(false);
+  const [showSuspendDialog, setShowSuspendDialog] = useState(false);
+  const [selectedModerator, setSelectedModerator] = useState<Moderator | null>(null);
+  const [addStep, setAddStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Add form state
+  const [newModEmail, setNewModEmail] = useState("");
+  const [newModPassword, setNewModPassword] = useState("");
+  const [selectedPages, setSelectedPages] = useState<string[]>(["dashboard", "live-chats"]);
+  const [suspendReason, setSuspendReason] = useState("");
+  
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchModerators();
+  }, []);
+
+  const fetchModerators = async () => {
+    setIsLoading(true);
+    try {
+      // Get moderator permissions
+      const { data: permissionsData, error: permError } = await supabase
+        .from("moderator_permissions")
+        .select("*");
+
+      if (permError) throw permError;
+
+      // Get user profiles
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("user_id, email, first_name, last_name");
+
+      // Get user roles to confirm moderator status
+      const { data: rolesData } = await supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .eq("role", "moderator");
+
+      const mods: Moderator[] = (permissionsData || []).map(perm => {
+        const profile = profilesData?.find(p => p.user_id === perm.user_id);
+        return {
+          id: perm.id,
+          user_id: perm.user_id,
+          email: profile?.email || "Unknown",
+          first_name: profile?.first_name,
+          last_name: profile?.last_name,
+          pages: perm.pages || [],
+          can_manage_chat: perm.can_manage_chat,
+          can_review_submissions: perm.can_review_submissions,
+          can_manage_users: perm.can_manage_users,
+          is_suspended: perm.is_suspended,
+          suspend_reason: perm.suspend_reason,
+          invited_at: perm.invited_at,
+        };
+      });
+
+      setModerators(mods);
+    } catch (error) {
+      console.error("Error fetching moderators:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to load moderators." });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddModerator = async () => {
+    if (!newModEmail || !newModPassword) {
+      toast({ variant: "destructive", title: "Error", description: "Email and password are required." });
+      return;
+    }
+
+    if (newModPassword.length < 6) {
+      toast({ variant: "destructive", title: "Error", description: "Password must be at least 6 characters." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Create user via edge function (since we can't create users client-side)
+      const { data: createData, error: createError } = await supabase.functions.invoke("create-moderator", {
+        body: {
+          email: newModEmail,
+          password: newModPassword,
+          pages: selectedPages,
+          invited_by: user?.id,
+        },
+      });
+
+      if (createError) throw createError;
+
+      if (createData?.error) {
+        throw new Error(createData.error);
+      }
+
+      toast({ title: "Success!", description: "Moderator created and invitation sent." });
+      setShowAddDialog(false);
+      resetAddForm();
+      fetchModerators();
+    } catch (error: any) {
+      console.error("Error creating moderator:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Error", 
+        description: error.message || "Failed to create moderator." 
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSuspendModerator = async () => {
+    if (!selectedModerator) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("moderator_permissions")
+        .update({
+          is_suspended: !selectedModerator.is_suspended,
+          suspended_at: selectedModerator.is_suspended ? null : new Date().toISOString(),
+          suspend_reason: selectedModerator.is_suspended ? null : suspendReason,
+        })
+        .eq("id", selectedModerator.id);
+
+      if (error) throw error;
+
+      toast({ 
+        title: "Success!", 
+        description: selectedModerator.is_suspended ? "Moderator reinstated." : "Moderator suspended." 
+      });
+      setShowSuspendDialog(false);
+      setSuspendReason("");
+      fetchModerators();
+    } catch (error) {
+      console.error("Error updating moderator:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to update moderator." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteModerator = async (mod: Moderator) => {
+    if (!confirm("Are you sure you want to remove this moderator? They will lose all moderator privileges.")) {
+      return;
+    }
+
+    try {
+      // Remove role
+      await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", mod.user_id)
+        .eq("role", "moderator");
+
+      // Remove permissions
+      await supabase
+        .from("moderator_permissions")
+        .delete()
+        .eq("id", mod.id);
+
+      toast({ title: "Success!", description: "Moderator removed." });
+      fetchModerators();
+    } catch (error) {
+      console.error("Error deleting moderator:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to remove moderator." });
+    }
+  };
+
+  const resetAddForm = () => {
+    setNewModEmail("");
+    setNewModPassword("");
+    setSelectedPages(["dashboard", "live-chats"]);
+    setAddStep(1);
+  };
+
+  const filteredModerators = moderators.filter(mod =>
+    mod.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    `${mod.first_name} ${mod.last_name}`.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Moderators</h1>
+          <p className="text-sm text-muted-foreground">Manage moderator accounts and permissions</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={fetchModerators} disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 text-white ${isLoading ? "animate-spin" : ""}`} />
+            <span className="text-white">Refresh</span>
+          </Button>
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Moderator
+          </Button>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search moderators..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Moderators Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Shield className="w-5 h-5 text-white" />
+            <span className="text-white">Active Moderators</span>
+          </CardTitle>
+          <CardDescription>List of all moderators with their permissions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredModerators.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No moderators found</p>
+              <p className="text-sm">Add your first moderator to get started</p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-white">Moderator</TableHead>
+                  <TableHead className="text-white">Status</TableHead>
+                  <TableHead className="text-white">Pages Access</TableHead>
+                  <TableHead className="text-white">Invited</TableHead>
+                  <TableHead className="text-white text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredModerators.map(mod => (
+                  <TableRow key={mod.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Shield className="w-4 h-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-white">
+                            {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{mod.email}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {mod.is_suspended ? (
+                        <Badge variant="destructive" className="gap-1">
+                          <Ban className="w-3 h-3" /> Suspended
+                        </Badge>
+                      ) : (
+                        <Badge variant="success" className="gap-1">
+                          <Check className="w-3 h-3" /> Active
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {mod.pages.slice(0, 3).map(page => (
+                          <Badge key={page} variant="outline" className="text-xs">
+                            {page}
+                          </Badge>
+                        ))}
+                        {mod.pages.length > 3 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{mod.pages.length - 3} more
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {new Date(mod.invited_at).toLocaleDateString()}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedModerator(mod);
+                            setShowViewDialog(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4 text-white" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setSelectedModerator(mod);
+                            setShowSuspendDialog(true);
+                          }}
+                        >
+                          <Ban className={`w-4 h-4 ${mod.is_suspended ? "text-green-500" : "text-yellow-500"}`} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteModerator(mod)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Moderator Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={(open) => { if (!open) { resetAddForm(); } setShowAddDialog(open); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add New Moderator</DialogTitle>
+            <DialogDescription>
+              {addStep === 1 ? "Enter the moderator's login credentials" : "Select which pages they can access"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {addStep === 1 ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Email Address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="moderator@example.com"
+                    value={newModEmail}
+                    onChange={(e) => setNewModEmail(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  placeholder="Minimum 6 characters"
+                  value={newModPassword}
+                  onChange={(e) => setNewModPassword(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <ScrollArea className="max-h-[400px] pr-4">
+              <div className="space-y-3">
+                {AVAILABLE_PAGES.map(page => (
+                  <div
+                    key={page.key}
+                    className={`flex items-center space-x-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      selectedPages.includes(page.key) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                    }`}
+                    onClick={() => {
+                      if (selectedPages.includes(page.key)) {
+                        setSelectedPages(selectedPages.filter(p => p !== page.key));
+                      } else {
+                        setSelectedPages([...selectedPages, page.key]);
+                      }
+                    }}
+                  >
+                    <Checkbox
+                      checked={selectedPages.includes(page.key)}
+                      onCheckedChange={() => {}}
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium">{page.label}</p>
+                      <p className="text-sm text-muted-foreground">{page.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+
+          <DialogFooter>
+            {addStep === 1 ? (
+              <>
+                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={() => setAddStep(2)}
+                  disabled={!newModEmail || !newModPassword}
+                >
+                  Next <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setAddStep(1)}>
+                  Back
+                </Button>
+                <Button onClick={handleAddModerator} disabled={isSubmitting || selectedPages.length === 0}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Moderator"
+                  )}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Moderator Dialog */}
+      <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Moderator Details</DialogTitle>
+          </DialogHeader>
+          {selectedModerator && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Shield className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">
+                    {selectedModerator.first_name 
+                      ? `${selectedModerator.first_name} ${selectedModerator.last_name || ""}` 
+                      : "Pending Setup"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">{selectedModerator.email}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Status</Label>
+                {selectedModerator.is_suspended ? (
+                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <p className="font-medium text-destructive">Suspended</p>
+                    {selectedModerator.suspend_reason && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Reason: {selectedModerator.suspend_reason}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <Badge variant="success">Active</Badge>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Page Access</Label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedModerator.pages.map(page => (
+                    <Badge key={page} variant="secondary">{page}</Badge>
+                  ))}
+                  {selectedModerator.pages.length === 0 && (
+                    <span className="text-sm text-muted-foreground">No pages assigned</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Invited On</Label>
+                <p className="text-sm text-muted-foreground">
+                  {new Date(selectedModerator.invited_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspend Dialog */}
+      <Dialog open={showSuspendDialog} onOpenChange={setShowSuspendDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {selectedModerator?.is_suspended ? "Reinstate Moderator" : "Suspend Moderator"}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedModerator?.is_suspended 
+                ? "This will restore their access to the admin panel."
+                : "This will prevent them from accessing the admin panel."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedModerator && !selectedModerator.is_suspended && (
+            <div className="space-y-2">
+              <Label>Reason for Suspension (optional)</Label>
+              <Textarea
+                placeholder="Enter reason..."
+                value={suspendReason}
+                onChange={(e) => setSuspendReason(e.target.value)}
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSuspendDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant={selectedModerator?.is_suspended ? "default" : "destructive"}
+              onClick={handleSuspendModerator}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              {selectedModerator?.is_suspended ? "Reinstate" : "Suspend"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

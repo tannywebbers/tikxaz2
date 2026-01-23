@@ -1,1 +1,10 @@
 project_id = "esdnolxhpuexvjvnaghf"
+
+[functions.create-moderator]
+verify_jwt = false
+
+[functions.totp-setup]
+verify_jwt = false
+
+[functions.totp-verify]
+verify_jwt = false

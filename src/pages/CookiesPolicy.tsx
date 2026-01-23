@@ -4,12 +4,15 @@ import { Footer } from "@/components/landing/Footer";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 
+interface LegalSection {
+  heading: string;
+  body: string;
+}
+
 export default function CookiesPolicy() {
-  const [content, setContent] = useState<{
-    title: string;
-    content: string;
-    updated_at?: string;
-  } | null>(null);
+  const [title, setTitle] = useState("Cookies Policy");
+  const [sections, setSections] = useState<LegalSection[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -30,66 +33,56 @@ export default function CookiesPolicy() {
       const appName = appSettings?.app_name || "TikPoints";
 
       if (pageData) {
-        setContent({
-          title: pageData.title || "Cookie Policy",
-          content: pageData.content || getDefaultCookies(appName),
-          updated_at: pageData.updated_at,
-        });
+        setTitle(pageData.title || "Cookies Policy");
+        setUpdatedAt(pageData.updated_at);
+        
+        try {
+          const parsed = JSON.parse(pageData.content || "[]");
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSections(parsed);
+          } else {
+            setSections(getDefaultSections(appName));
+          }
+        } catch {
+          setSections(getDefaultSections(appName));
+        }
       } else {
-        setContent({
-          title: "Cookie Policy",
-          content: getDefaultCookies(appName),
-        });
+        setSections(getDefaultSections(appName));
       }
     } catch (error) {
       console.error("Error fetching cookies policy:", error);
-      setContent({
-        title: "Cookie Policy",
-        content: getDefaultCookies("TikPoints"),
-      });
+      setSections(getDefaultSections("TikPoints"));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getDefaultCookies = (name: string) => `
-<h2>What Are Cookies</h2>
-<p>Cookies are small text files stored on your device when you visit ${name}. They help us provide you with a better experience.</p>
-
-<h2>How We Use Cookies</h2>
-<p>We use cookies for:</p>
-<ul>
-<li><strong>Essential cookies:</strong> Required for the website to function properly (login sessions, security)</li>
-<li><strong>Preference cookies:</strong> Remember your settings (theme, language)</li>
-<li><strong>Analytics cookies:</strong> Help us understand how visitors interact with our website</li>
-<li><strong>Advertising cookies:</strong> Used to deliver relevant advertisements</li>
-</ul>
-
-<h2>Types of Cookies We Use</h2>
-<h3>Session Cookies</h3>
-<p>Temporary cookies that expire when you close your browser. Used for authentication and security.</p>
-
-<h3>Persistent Cookies</h3>
-<p>Remain on your device for a set period. Used to remember your preferences and login status.</p>
-
-<h3>Third-Party Cookies</h3>
-<p>Set by external services we use, such as analytics and advertising platforms.</p>
-
-<h2>Managing Cookies</h2>
-<p>You can control cookies through your browser settings:</p>
-<ul>
-<li>Block all cookies</li>
-<li>Delete existing cookies</li>
-<li>Allow cookies from specific websites</li>
-</ul>
-<p>Note: Disabling cookies may affect the functionality of ${name}.</p>
-
-<h2>Updates to This Policy</h2>
-<p>We may update this policy periodically. Check back for the latest information on our cookie practices.</p>
-
-<h2>Contact Us</h2>
-<p>If you have questions about our use of cookies, please contact our support team.</p>
-  `;
+  const getDefaultSections = (name: string): LegalSection[] => [
+    {
+      heading: "What Are Cookies",
+      body: `Cookies are small text files stored on your device when you visit ${name}. They help us provide you with a better experience by remembering your preferences and understanding how you use our service.`,
+    },
+    {
+      heading: "Types of Cookies We Use",
+      body: "We use the following types of cookies:\n\n• Essential Cookies: Required for the website to function properly, including authentication and security.\n\n• Analytics Cookies: Help us understand how visitors interact with our website.\n\n• Preference Cookies: Remember your settings and preferences.\n\n• Marketing Cookies: Used to deliver relevant advertisements.",
+    },
+    {
+      heading: "Essential Cookies",
+      body: "These cookies are necessary for the website to function and cannot be switched off. They are usually set in response to actions made by you, such as setting your privacy preferences, logging in, or filling in forms.",
+    },
+    {
+      heading: "Managing Cookies",
+      body: "You can control and manage cookies in various ways:\n\n• Browser settings: Most browsers allow you to refuse or accept cookies.\n\n• Third-party tools: Various tools are available to manage cookie preferences.\n\nNote: Blocking cookies may impact your experience on our website.",
+    },
+    {
+      heading: "Third-Party Cookies",
+      body: "Some cookies are placed by third-party services that appear on our pages. We do not control these cookies. Third parties include analytics providers and advertising networks.",
+    },
+    {
+      heading: "Updates to This Policy",
+      body: "We may update this Cookies Policy from time to time. We will notify you of any changes by posting the new policy on this page with a new effective date.",
+    },
+  ];
 
   if (isLoading) {
     return (
@@ -103,16 +96,23 @@ export default function CookiesPolicy() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="container mx-auto px-4 py-12 max-w-4xl">
-        <h1 className="text-4xl font-bold mb-4">{content?.title}</h1>
-        {content?.updated_at && (
+        <h1 className="text-4xl font-bold mb-4">{title}</h1>
+        {updatedAt && (
           <p className="text-muted-foreground mb-8">
-            Last updated: {new Date(content.updated_at).toLocaleDateString()}
+            Last updated: {new Date(updatedAt).toLocaleDateString()}
           </p>
         )}
-        <div 
-          className="prose prose-lg dark:prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: content?.content || "" }}
-        />
+        
+        <div className="space-y-8">
+          {sections.map((section, index) => (
+            <div key={index} className="space-y-3">
+              <h2 className="text-2xl font-semibold">{section.heading}</h2>
+              <div className="text-muted-foreground whitespace-pre-line leading-relaxed">
+                {section.body}
+              </div>
+            </div>
+          ))}
+        </div>
       </main>
       <Footer />
     </div>

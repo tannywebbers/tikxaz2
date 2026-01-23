@@ -39,6 +39,9 @@ import AdminEmailConfig from "./pages/admin/AdminEmailConfig";
 import AdminAdsSettings from "./pages/admin/AdminAdsSettings";
 import AdminVisualEditor from "./pages/admin/AdminVisualEditor";
 import AdminAppSettings from "./pages/admin/AdminAppSettings";
+import AdminLiveChats from "./pages/admin/AdminLiveChats";
+import AdminModerators from "./pages/admin/AdminModerators";
+import Admin2FASettings from "./pages/admin/Admin2FASettings";
 
 const queryClient = new QueryClient();
 
@@ -83,9 +86,12 @@ const App = () => (
                 <Route index element={<AdminDashboard />} />
                 <Route path="submissions" element={<AdminSubmissions />} />
                 <Route path="users" element={<AdminUsers />} />
+                <Route path="live-chats" element={<AdminLiveChats />} />
+                <Route path="moderators" element={<AdminModerators />} />
                 <Route path="ai-config" element={<AdminAIConfig />} />
                 <Route path="prompts" element={<AdminPrompts />} />
                 <Route path="settings" element={<AdminSettings />} />
+                <Route path="2fa" element={<Admin2FASettings />} />
                 <Route path="landing" element={<AdminLandingCMS />} />
                 <Route path="visual-editor" element={<AdminVisualEditor />} />
                 <Route path="app-settings" element={<AdminAppSettings />} />
