@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, Lock, Mail, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Shield, Lock, Mail, Eye, EyeOff, Loader2, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -19,6 +21,12 @@ export default function AdminLogin() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  
+  // 2FA state
+  const [show2FA, setShow2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
+  const [tempUserId, setTempUserId] = useState<string | null>(null);
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
   
   const { signIn, user, isAdmin, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -46,11 +54,93 @@ export default function AdminLogin() {
     }
 
     setIsLoading(true);
-    const { error } = await signIn(formData.email, formData.password);
-    setIsLoading(false);
+    
+    // First authenticate with Supabase
+    const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: formData.email,
+      password: formData.password,
+    });
 
-    if (error) {
-      setAuthError("Invalid credentials or not authorized");
+    if (signInError) {
+      setIsLoading(false);
+      setAuthError("Invalid credentials");
+      return;
+    }
+
+    if (!authData.user) {
+      setIsLoading(false);
+      setAuthError("Authentication failed");
+      return;
+    }
+
+    // Check if user is admin or moderator
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", authData.user.id)
+      .in("role", ["admin", "moderator"]);
+
+    if (!roleData || roleData.length === 0) {
+      await supabase.auth.signOut();
+      setIsLoading(false);
+      setAuthError("Not authorized to access admin panel");
+      return;
+    }
+
+    // Check if 2FA is enabled for this user
+    const { data: totpData } = await supabase
+      .from("admin_totp_secrets")
+      .select("is_verified")
+      .eq("user_id", authData.user.id)
+      .maybeSingle();
+
+    if (totpData?.is_verified) {
+      // Sign out temporarily and require 2FA
+      await supabase.auth.signOut();
+      setTempUserId(authData.user.id);
+      setShow2FA(true);
+      setIsLoading(false);
+      return;
+    }
+
+    // No 2FA, proceed normally
+    setIsLoading(false);
+    navigate("/baki/stage/admin");
+  };
+
+  const handle2FAVerify = async () => {
+    if (totpCode.length !== 6 || !tempUserId) return;
+
+    setIsVerifying2FA(true);
+    setAuthError("");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("totp-verify", {
+        body: { user_id: tempUserId, code: totpCode },
+      });
+
+      if (error || !data?.success) {
+        setAuthError(data?.error || "Invalid verification code");
+        setIsVerifying2FA(false);
+        return;
+      }
+
+      // 2FA successful, sign in again
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (signInError) {
+        setAuthError("Authentication failed");
+        setIsVerifying2FA(false);
+        return;
+      }
+
+      navigate("/baki/stage/admin");
+    } catch (err) {
+      setAuthError("Verification failed");
+      setIsVerifying2FA(false);
     }
   };
 
@@ -71,74 +161,140 @@ export default function AdminLogin() {
       >
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-neutral-800 border border-neutral-700 flex items-center justify-center mx-auto mb-4">
-            <Shield className="w-8 h-8 text-neutral-300" />
+            {show2FA ? (
+              <KeyRound className="w-8 h-8 text-neutral-300" />
+            ) : (
+              <Shield className="w-8 h-8 text-neutral-300" />
+            )}
           </div>
-          <h1 className="text-xl font-semibold text-neutral-100">Admin Access</h1>
-          <p className="text-sm text-neutral-500 mt-1">Restricted area</p>
+          <h1 className="text-xl font-semibold text-neutral-100">
+            {show2FA ? "Two-Factor Authentication" : "Admin Access"}
+          </h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            {show2FA ? "Enter your 6-digit code" : "Restricted area"}
+          </p>
         </div>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-neutral-300">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                <Input
-                  id="email"
-                  type="email"
-                  className="pl-10 bg-neutral-800 border-neutral-700 text-neutral-100 placeholder:text-neutral-500"
-                  placeholder="admin@example.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                />
-              </div>
-              {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-neutral-300">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  className="pl-10 pr-10 bg-neutral-800 border-neutral-700 text-neutral-100 placeholder:text-neutral-500"
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+          {show2FA ? (
+            <div className="space-y-6">
+              <div className="flex justify-center">
+                <InputOTP
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(value) => setTotpCode(value)}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+                  <InputOTPGroup>
+                    <InputOTPSlot index={0} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={1} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={2} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={3} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={4} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={5} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                  </InputOTPGroup>
+                </InputOTP>
               </div>
-              {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
-            </div>
 
-            {authError && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                <p className="text-sm text-red-400">{authError}</p>
-              </div>
-            )}
+              <p className="text-sm text-neutral-500 text-center">
+                Open your authenticator app and enter the 6-digit code
+              </p>
 
-            <Button
-              type="submit"
-              className="w-full bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Authenticating...
-                </>
-              ) : (
-                "Access Panel"
+              {authError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <p className="text-sm text-red-400">{authError}</p>
+                </div>
               )}
-            </Button>
-          </form>
+
+              <Button
+                className="w-full bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+                disabled={totpCode.length !== 6 || isVerifying2FA}
+                onClick={handle2FAVerify}
+              >
+                {isVerifying2FA ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify & Continue"
+                )}
+              </Button>
+
+              <Button
+                variant="ghost"
+                className="w-full text-neutral-400"
+                onClick={() => {
+                  setShow2FA(false);
+                  setTotpCode("");
+                  setTempUserId(null);
+                }}
+              >
+                Back to Login
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-neutral-300">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <Input
+                    id="email"
+                    type="email"
+                    className="pl-10 bg-neutral-800 border-neutral-700 text-neutral-100 placeholder:text-neutral-500"
+                    placeholder="admin@example.com"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  />
+                </div>
+                {errors.email && <p className="text-xs text-red-400">{errors.email}</p>}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-neutral-300">Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    className="pl-10 pr-10 bg-neutral-800 border-neutral-700 text-neutral-100 placeholder:text-neutral-500"
+                    placeholder="••••••••"
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {errors.password && <p className="text-xs text-red-400">{errors.password}</p>}
+              </div>
+
+              {authError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <p className="text-sm text-red-400">{authError}</p>
+                </div>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Authenticating...
+                  </>
+                ) : (
+                  "Access Panel"
+                )}
+              </Button>
+            </form>
+          )}
         </div>
       </motion.div>
     </div>

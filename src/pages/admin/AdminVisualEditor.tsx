@@ -78,6 +78,16 @@ interface FeatureItem {
   icon?: string;
 }
 
+interface LegalSectionItem {
+  heading: string;
+  body: string;
+}
+
+interface FAQItem {
+  question: string;
+  answer: string;
+}
+
 const ICON_OPTIONS = [
   "Play", "Heart", "MessageCircle", "Bookmark", "Users", "TrendingUp", 
   "Zap", "Shield", "Clock", "CheckCircle", "Star", "Gift", "Coins"
@@ -91,10 +101,12 @@ export default function AdminVisualEditor() {
   const [editMode, setEditMode] = useState<'visual' | 'html'>('visual');
   const [htmlContent, setHtmlContent] = useState("");
   
-  // For array-based content (steps, stats, features)
+  // For array-based content (steps, stats, features, legal sections, faqs)
   const [steps, setSteps] = useState<StepItem[]>([]);
   const [stats, setStats] = useState<StatItem[]>([]);
   const [features, setFeatures] = useState<FeatureItem[]>([]);
+  const [legalSections, setLegalSections] = useState<LegalSectionItem[]>([]);
+  const [faqItems, setFaqItems] = useState<FAQItem[]>([]);
   
   const { toast } = useToast();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -223,6 +235,20 @@ export default function AdminVisualEditor() {
       } catch {
         setFeatures([]);
       }
+    } else if (["privacy_policy", "terms_of_service", "cookies_policy"].includes(section.section_key)) {
+      try {
+        const parsed = JSON.parse(section.content || "[]");
+        setLegalSections(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setLegalSections([]);
+      }
+    } else if (section.section_key === "faqs") {
+      try {
+        const parsed = JSON.parse(section.content || "[]");
+        setFaqItems(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setFaqItems([]);
+      }
     }
   };
 
@@ -243,6 +269,10 @@ export default function AdminVisualEditor() {
           finalContent = JSON.stringify(stats);
         } else if (editingSection.section_key === "features") {
           finalContent = JSON.stringify(features);
+        } else if (["privacy_policy", "terms_of_service", "cookies_policy"].includes(editingSection.section_key)) {
+          finalContent = JSON.stringify(legalSections);
+        } else if (editingSection.section_key === "faqs") {
+          finalContent = JSON.stringify(faqItems);
         }
       }
 
@@ -528,6 +558,146 @@ export default function AdminVisualEditor() {
     </div>
   );
 
+  const renderLegalSectionsEditor = () => (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <Label className="text-base font-semibold text-white">Content Sections</Label>
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => setLegalSections([...legalSections, { heading: "New Section", body: "Add content here..." }])}
+        >
+          <Plus className="w-4 h-4 mr-1" /> Add Section
+        </Button>
+      </div>
+      {legalSections.map((section, index) => (
+        <Card key={index} className="p-3">
+          <div className="flex items-start gap-2">
+            <div className="flex flex-col gap-1 mt-2">
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                if (index > 0) {
+                  const newSections = [...legalSections];
+                  [newSections[index], newSections[index - 1]] = [newSections[index - 1], newSections[index]];
+                  setLegalSections(newSections);
+                }
+              }}>
+                <ArrowUp className="w-3 h-3" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                if (index < legalSections.length - 1) {
+                  const newSections = [...legalSections];
+                  [newSections[index], newSections[index + 1]] = [newSections[index + 1], newSections[index]];
+                  setLegalSections(newSections);
+                }
+              }}>
+                <ArrowDown className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Section {index + 1}</Badge>
+              </div>
+              <Input
+                placeholder="Section heading"
+                value={section.heading}
+                onChange={(e) => {
+                  const newSections = [...legalSections];
+                  newSections[index] = { ...section, heading: e.target.value };
+                  setLegalSections(newSections);
+                }}
+              />
+              <Textarea
+                placeholder="Section content..."
+                value={section.body}
+                rows={4}
+                onChange={(e) => {
+                  const newSections = [...legalSections];
+                  newSections[index] = { ...section, body: e.target.value };
+                  setLegalSections(newSections);
+                }}
+              />
+            </div>
+            <Button size="icon" variant="ghost" className="text-destructive" onClick={() => {
+              setLegalSections(legalSections.filter((_, i) => i !== index));
+            }}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+
+  const renderFAQsEditor = () => (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <Label className="text-base font-semibold text-white">FAQ Items</Label>
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => setFaqItems([...faqItems, { question: "New Question?", answer: "Answer here..." }])}
+        >
+          <Plus className="w-4 h-4 mr-1" /> Add FAQ
+        </Button>
+      </div>
+      {faqItems.map((faq, index) => (
+        <Card key={index} className="p-3">
+          <div className="flex items-start gap-2">
+            <div className="flex flex-col gap-1 mt-2">
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                if (index > 0) {
+                  const newItems = [...faqItems];
+                  [newItems[index], newItems[index - 1]] = [newItems[index - 1], newItems[index]];
+                  setFaqItems(newItems);
+                }
+              }}>
+                <ArrowUp className="w-3 h-3" />
+              </Button>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => {
+                if (index < faqItems.length - 1) {
+                  const newItems = [...faqItems];
+                  [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
+                  setFaqItems(newItems);
+                }
+              }}>
+                <ArrowDown className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Q{index + 1}</Badge>
+              </div>
+              <Input
+                placeholder="Question"
+                value={faq.question}
+                onChange={(e) => {
+                  const newItems = [...faqItems];
+                  newItems[index] = { ...faq, question: e.target.value };
+                  setFaqItems(newItems);
+                }}
+              />
+              <Textarea
+                placeholder="Answer..."
+                value={faq.answer}
+                rows={3}
+                onChange={(e) => {
+                  const newItems = [...faqItems];
+                  newItems[index] = { ...faq, answer: e.target.value };
+                  setFaqItems(newItems);
+                }}
+              />
+            </div>
+            <Button size="icon" variant="ghost" className="text-destructive" onClick={() => {
+              setFaqItems(faqItems.filter((_, i) => i !== index));
+            }}>
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+
   const getSectionLabel = (key: string) => {
     const labels: Record<string, string> = {
       hero: "Hero Banner",
@@ -536,7 +706,11 @@ export default function AdminVisualEditor() {
       features: "Features",
       cta: "Call to Action",
       pricing: "Pricing",
-      footer: "Footer"
+      footer: "Footer",
+      privacy_policy: "Privacy Policy",
+      terms_of_service: "Terms of Service",
+      cookies_policy: "Cookies Policy",
+      faqs: "FAQs"
     };
     return labels[key] || key;
   };
@@ -699,6 +873,8 @@ export default function AdminVisualEditor() {
                   {editingSection.section_key === "how_it_works" && renderStepEditor()}
                   {editingSection.section_key === "stats" && renderStatsEditor()}
                   {editingSection.section_key === "features" && renderFeaturesEditor()}
+                  {["privacy_policy", "terms_of_service", "cookies_policy"].includes(editingSection.section_key) && renderLegalSectionsEditor()}
+                  {editingSection.section_key === "faqs" && renderFAQsEditor()}
                   
                   {/* Generic content for hero/cta */}
                   {["hero", "cta"].includes(editingSection.section_key) && (

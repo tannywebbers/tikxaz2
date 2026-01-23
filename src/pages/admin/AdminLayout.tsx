@@ -27,6 +27,8 @@ const navItems = [
   { icon: LayoutGrid, label: "Dashboard", href: "/baki/stage/admin" },
   { icon: FileCheck, label: "Submissions", href: "/baki/stage/admin/submissions" },
   { icon: Users, label: "Users", href: "/baki/stage/admin/users" },
+  { icon: MessageSquare, label: "Live Chats", href: "/baki/stage/admin/live-chats" },
+  { icon: Shield, label: "Moderators", href: "/baki/stage/admin/moderators" },
   { icon: Brain, label: "AI Config", href: "/baki/stage/admin/ai-config" },
   { icon: MessageSquare, label: "AI Prompts", href: "/baki/stage/admin/prompts" },
   { icon: Eye, label: "Visual Editor", href: "/baki/stage/admin/visual-editor" },
