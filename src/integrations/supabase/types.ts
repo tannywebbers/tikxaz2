@@ -44,12 +44,44 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_login_attempts: {
+        Row: {
+          attempt_type: string
+          created_at: string
+          email: string
+          id: string
+          ip_address: string | null
+          is_successful: boolean
+          user_id: string | null
+        }
+        Insert: {
+          attempt_type?: string
+          created_at?: string
+          email: string
+          id?: string
+          ip_address?: string | null
+          is_successful?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          attempt_type?: string
+          created_at?: string
+          email?: string
+          id?: string
+          ip_address?: string | null
+          is_successful?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       admin_totp_secrets: {
         Row: {
           backup_codes: string[] | null
           created_at: string
+          failed_attempts: number
           id: string
           is_verified: boolean
+          locked_until: string | null
           secret_encrypted: string
           updated_at: string
           user_id: string
@@ -57,8 +89,10 @@ export type Database = {
         Insert: {
           backup_codes?: string[] | null
           created_at?: string
+          failed_attempts?: number
           id?: string
           is_verified?: boolean
+          locked_until?: string | null
           secret_encrypted: string
           updated_at?: string
           user_id: string
@@ -66,8 +100,10 @@ export type Database = {
         Update: {
           backup_codes?: string[] | null
           created_at?: string
+          failed_attempts?: number
           id?: string
           is_verified?: boolean
+          locked_until?: string | null
           secret_encrypted?: string
           updated_at?: string
           user_id?: string
@@ -507,6 +543,36 @@ export type Database = {
           subtitle?: string | null
           title?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      moderator_activity_logs: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          id: string
+          moderator_id: string
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          moderator_id: string
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          moderator_id?: string
+          target_id?: string | null
+          target_type?: string | null
         }
         Relationships: []
       }

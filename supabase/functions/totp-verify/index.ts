@@ -6,6 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_HOURS = 6;
+
 // RFC 4648 Base32 decoding
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -33,7 +36,6 @@ function base32Decode(input: string): Uint8Array {
 
 // HMAC-SHA1 implementation for TOTP
 async function hmacSha1(key: Uint8Array, message: Uint8Array): Promise<Uint8Array> {
-  // Create a new ArrayBuffer from the Uint8Array to avoid SharedArrayBuffer issues
   const keyBuffer = new ArrayBuffer(key.length);
   new Uint8Array(keyBuffer).set(key);
   
@@ -119,13 +121,35 @@ serve(async (req) => {
       );
     }
 
-    // Check if it's a backup code
-    if (totpData.backup_codes?.includes(code.toUpperCase())) {
-      // Remove used backup code
+    // Check lockout
+    if (totpData.locked_until) {
+      const lockedUntil = new Date(totpData.locked_until);
+      if (lockedUntil > new Date()) {
+        return new Response(
+          JSON.stringify({ 
+            error: "Account locked", 
+            locked: true, 
+            locked_until: totpData.locked_until,
+            success: false 
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } else {
+        // Reset lockout if expired
+        await supabase
+          .from("admin_totp_secrets")
+          .update({ locked_until: null, failed_attempts: 0 })
+          .eq("user_id", user_id);
+      }
+    }
+
+    // Check if it's a backup code (8 chars)
+    if (code.length === 8 && totpData.backup_codes?.includes(code.toUpperCase())) {
+      // Remove used backup code and reset failed attempts
       const newCodes = totpData.backup_codes.filter((c: string) => c !== code.toUpperCase());
       await supabase
         .from("admin_totp_secrets")
-        .update({ backup_codes: newCodes })
+        .update({ backup_codes: newCodes, failed_attempts: 0, locked_until: null })
         .eq("user_id", user_id);
 
       return new Response(
@@ -138,19 +162,59 @@ serve(async (req) => {
     const isValid = await verifyTOTP(totpData.secret_encrypted, code);
 
     if (!isValid) {
+      // Increment failed attempts
+      const newFailedAttempts = (totpData.failed_attempts || 0) + 1;
+      
+      if (newFailedAttempts >= MAX_ATTEMPTS) {
+        // Lock account
+        const lockUntil = new Date();
+        lockUntil.setHours(lockUntil.getHours() + LOCKOUT_HOURS);
+        
+        await supabase
+          .from("admin_totp_secrets")
+          .update({ failed_attempts: newFailedAttempts, locked_until: lockUntil.toISOString() })
+          .eq("user_id", user_id);
+
+        return new Response(
+          JSON.stringify({ 
+            error: "Account locked due to too many failed attempts", 
+            success: false,
+            locked: true,
+            locked_until: lockUntil.toISOString(),
+            failed_attempts: newFailedAttempts
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      await supabase
+        .from("admin_totp_secrets")
+        .update({ failed_attempts: newFailedAttempts })
+        .eq("user_id", user_id);
+
       return new Response(
-        JSON.stringify({ error: "Invalid code", success: false }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          error: "Invalid code", 
+          success: false,
+          failed_attempts: newFailedAttempts,
+          remaining_attempts: MAX_ATTEMPTS - newFailedAttempts
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Success - reset failed attempts
+    const updateData: Record<string, unknown> = { failed_attempts: 0, locked_until: null };
+    
     // If this is initial verification, mark as verified
     if (action === "verify-setup" && !totpData.is_verified) {
-      await supabase
-        .from("admin_totp_secrets")
-        .update({ is_verified: true })
-        .eq("user_id", user_id);
+      updateData.is_verified = true;
     }
+
+    await supabase
+      .from("admin_totp_secrets")
+      .update(updateData)
+      .eq("user_id", user_id);
 
     return new Response(
       JSON.stringify({ success: true }),

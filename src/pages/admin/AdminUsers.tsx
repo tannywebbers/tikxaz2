@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface User {
   id: string;
@@ -84,6 +85,10 @@ export default function AdminUsers() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
+  const { userRole } = useAuth();
+
+  // Only super admins can credit/debit
+  const canCreditDebit = userRole === 'admin';
 
   // Credit/Debit modal state
   const [creditDebitModal, setCreditDebitModal] = useState<{
@@ -124,13 +129,24 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     setIsLoading(true);
     try {
+      // Get all user roles to filter out admins and moderators
+      const { data: rolesData } = await supabase
+        .from("user_roles")
+        .select("user_id, role")
+        .in("role", ["admin", "moderator"]);
+
+      const adminModeratorIds = new Set((rolesData || []).map(r => r.user_id));
+
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setUsers(data as User[] || []);
+      
+      // Filter out admin and moderator users
+      const regularUsers = (data || []).filter(user => !adminModeratorIds.has(user.user_id));
+      setUsers(regularUsers as User[]);
     } catch (error) {
       console.error("Error fetching users:", error);
       toast({ variant: "destructive", title: "Error", description: "Failed to load users." });
@@ -140,6 +156,11 @@ export default function AdminUsers() {
   };
 
   const handleCreditDebit = async () => {
+    if (!canCreditDebit) {
+      toast({ variant: "destructive", title: "Unauthorized", description: "Only super admins can credit/debit points." });
+      return;
+    }
+
     if (!creditDebitModal.user || !amount || parseFloat(amount) <= 0) {
       toast({ variant: "destructive", title: "Invalid amount", description: "Please enter a valid amount." });
       return;
@@ -238,7 +259,6 @@ export default function AdminUsers() {
     
     setIsProcessing(true);
     try {
-      // Delete profile (cascades to related data based on DB design)
       const { error } = await supabase
         .from("profiles")
         .delete()
@@ -322,7 +342,7 @@ export default function AdminUsers() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -331,18 +351,18 @@ export default function AdminUsers() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-100">Users</h1>
-          <p className="text-sm text-neutral-500 mt-1">{users.length} registered users</p>
+          <h1 className="text-2xl font-semibold text-foreground">Users</h1>
+          <p className="text-sm text-muted-foreground mt-1">{users.length} registered users</p>
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={() => setBroadcastModal(true)} className="gap-2 bg-blue-600 hover:bg-blue-700">
             <Send className="w-4 h-4" /> Broadcast
           </Button>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search users..."
-              className="pl-10 w-64 bg-neutral-800 border-neutral-700 text-neutral-100"
+              className="pl-10 w-64"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -350,21 +370,21 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="border-neutral-800 hover:bg-transparent">
-              <TableHead className="text-neutral-400">User</TableHead>
-              <TableHead className="text-neutral-400">TikTok</TableHead>
-              <TableHead className="text-neutral-400">Points</TableHead>
-              <TableHead className="text-neutral-400">Status</TableHead>
-              <TableHead className="text-neutral-400">Joined</TableHead>
-              <TableHead className="text-neutral-400 text-right">Actions</TableHead>
+            <TableRow className="border-border hover:bg-transparent">
+              <TableHead className="text-foreground">User</TableHead>
+              <TableHead className="text-foreground">TikTok</TableHead>
+              <TableHead className="text-foreground">Points</TableHead>
+              <TableHead className="text-foreground">Status</TableHead>
+              <TableHead className="text-foreground">Joined</TableHead>
+              <TableHead className="text-foreground text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredUsers.map(user => (
-              <TableRow key={user.id} className={`border-neutral-800 hover:bg-neutral-800/50 ${user.is_banned ? 'opacity-60' : ''}`}>
+              <TableRow key={user.id} className={`border-border hover:bg-muted/50 ${user.is_banned ? 'opacity-60' : ''}`}>
                 <TableCell>
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm">
@@ -373,14 +393,14 @@ export default function AdminUsers() {
                         : (user.first_name?.[0] || user.email[0]).toUpperCase()}
                     </div>
                     <div>
-                      <div className="font-medium text-neutral-100">{user.first_name} {user.last_name}</div>
-                      <div className="text-sm text-neutral-500">{user.email}</div>
+                      <div className="font-medium text-foreground">{user.first_name} {user.last_name}</div>
+                      <div className="text-sm text-muted-foreground">{user.email}</div>
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-neutral-400">@{user.tiktok_username}</TableCell>
+                <TableCell className="text-muted-foreground">@{user.tiktok_username}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="gap-1 border-neutral-700 text-neutral-300">
+                  <Badge variant="outline" className="gap-1">
                     <Coins className="w-3 h-3" /> {user.tik_points}
                   </Badge>
                 </TableCell>
@@ -390,12 +410,12 @@ export default function AdminUsers() {
                       <XCircle className="w-3 h-3" /> Banned
                     </Badge>
                   ) : (
-                    <Badge variant="outline" className="gap-1 border-green-700 text-green-400">
+                    <Badge variant="outline" className="gap-1 border-green-700 text-green-500">
                       <CheckCircle className="w-3 h-3" /> Active
                     </Badge>
                   )}
                 </TableCell>
-                <TableCell className="text-neutral-500">
+                <TableCell className="text-muted-foreground">
                   {new Date(user.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="text-right">
@@ -405,34 +425,38 @@ export default function AdminUsers() {
                         <MoreHorizontal className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-neutral-800 border-neutral-700">
+                    <DropdownMenuContent align="end">
+                      {canCreditDebit && (
+                        <>
+                          <DropdownMenuItem 
+                            className="text-green-500 focus:text-green-500"
+                            onClick={() => setCreditDebitModal({ open: true, type: "credit", user })}
+                          >
+                            <Plus className="w-4 h-4 mr-2" /> Credit Points
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-orange-500 focus:text-orange-500"
+                            onClick={() => setCreditDebitModal({ open: true, type: "debit", user })}
+                          >
+                            <Minus className="w-4 h-4 mr-2" /> Debit Points
+                          </DropdownMenuItem>
+                        </>
+                      )}
                       <DropdownMenuItem 
-                        className="text-green-400 focus:text-green-400"
-                        onClick={() => setCreditDebitModal({ open: true, type: "credit", user })}
-                      >
-                        <Plus className="w-4 h-4 mr-2" /> Credit Points
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-orange-400 focus:text-orange-400"
-                        onClick={() => setCreditDebitModal({ open: true, type: "debit", user })}
-                      >
-                        <Minus className="w-4 h-4 mr-2" /> Debit Points
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-blue-400 focus:text-blue-400"
+                        className="text-blue-500 focus:text-blue-500"
                         onClick={() => setNotifyModal({ open: true, user })}
                       >
                         <Send className="w-4 h-4 mr-2" /> Send Notification
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-neutral-700" />
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem 
-                        className="text-yellow-400 focus:text-yellow-400"
+                        className="text-yellow-500 focus:text-yellow-500"
                         onClick={() => setBanModal({ open: true, user })}
                       >
                         <Ban className="w-4 h-4 mr-2" /> {user.is_banned ? "Unban" : "Ban"} User
                       </DropdownMenuItem>
                       <DropdownMenuItem 
-                        className="text-red-400 focus:text-red-400"
+                        className="text-red-500 focus:text-red-500"
                         onClick={() => setDeleteConfirm({ open: true, user })}
                       >
                         <Trash2 className="w-4 h-4 mr-2" /> Delete User
@@ -448,20 +472,20 @@ export default function AdminUsers() {
 
       {/* Credit/Debit Modal */}
       <Dialog open={creditDebitModal.open} onOpenChange={(open) => !open && setCreditDebitModal({ ...creditDebitModal, open: false })}>
-        <DialogContent className="bg-neutral-900 border-neutral-800">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-neutral-100">
+            <DialogTitle>
               {creditDebitModal.type === "credit" ? "Credit" : "Debit"} Points
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label className="text-neutral-300">Amount</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="bg-neutral-800 border-neutral-700" />
+              <Label>Amount</Label>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label className="text-neutral-300">Reason</Label>
-              <Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="bg-neutral-800 border-neutral-700" />
+              <Label>Reason</Label>
+              <Textarea value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
@@ -476,12 +500,12 @@ export default function AdminUsers() {
 
       {/* Ban Modal */}
       <Dialog open={banModal.open} onOpenChange={(open) => !open && setBanModal({ ...banModal, open: false })}>
-        <DialogContent className="bg-neutral-900 border-neutral-800">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-neutral-100">
+            <DialogTitle>
               {banModal.user?.is_banned ? "Unban" : "Ban"} User
             </DialogTitle>
-            <DialogDescription className="text-neutral-400">
+            <DialogDescription>
               {banModal.user?.is_banned 
                 ? "This will restore the user's access to the platform."
                 : "This will prevent the user from logging in or earning points."}
@@ -489,8 +513,8 @@ export default function AdminUsers() {
           </DialogHeader>
           {!banModal.user?.is_banned && (
             <div className="space-y-2 py-4">
-              <Label className="text-neutral-300">Ban Reason</Label>
-              <Textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} placeholder="Reason for ban..." className="bg-neutral-800 border-neutral-700" />
+              <Label>Ban Reason</Label>
+              <Textarea value={banReason} onChange={(e) => setBanReason(e.target.value)} placeholder="Reason for ban..." />
             </div>
           )}
           <DialogFooter>
@@ -505,15 +529,15 @@ export default function AdminUsers() {
 
       {/* Delete Confirmation */}
       <AlertDialog open={deleteConfirm.open} onOpenChange={(open) => !open && setDeleteConfirm({ ...deleteConfirm, open: false })}>
-        <AlertDialogContent className="bg-neutral-900 border-neutral-800">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-neutral-100">Delete User Permanently?</AlertDialogTitle>
-            <AlertDialogDescription className="text-neutral-400">
+            <AlertDialogTitle>Delete User Permanently?</AlertDialogTitle>
+            <AlertDialogDescription>
               This action cannot be undone. This will permanently delete {deleteConfirm.user?.email} and all their data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="bg-neutral-800 border-neutral-700">Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteUser} className="bg-red-600 hover:bg-red-700">
               {isProcessing && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
               Delete Permanently
@@ -524,21 +548,21 @@ export default function AdminUsers() {
 
       {/* Notification Modal */}
       <Dialog open={notifyModal.open} onOpenChange={(open) => !open && setNotifyModal({ ...notifyModal, open: false })}>
-        <DialogContent className="bg-neutral-900 border-neutral-800">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-neutral-100">Send Notification</DialogTitle>
+            <DialogTitle>Send Notification</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <Select value={notifyType} onValueChange={(v) => setNotifyType(v as NotificationType)}>
-              <SelectTrigger className="bg-neutral-800 border-neutral-700"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-neutral-800 border-neutral-700">
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
                 <SelectItem value="info">Info</SelectItem>
                 <SelectItem value="announcement">Announcement</SelectItem>
                 <SelectItem value="warning">Warning</SelectItem>
               </SelectContent>
             </Select>
-            <Input placeholder="Title" value={notifyTitle} onChange={(e) => setNotifyTitle(e.target.value)} className="bg-neutral-800 border-neutral-700" />
-            <Textarea placeholder="Message" value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} className="bg-neutral-800 border-neutral-700" />
+            <Input placeholder="Title" value={notifyTitle} onChange={(e) => setNotifyTitle(e.target.value)} />
+            <Textarea placeholder="Message" value={notifyMessage} onChange={(e) => setNotifyMessage(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotifyModal({ ...notifyModal, open: false })}>Cancel</Button>
@@ -551,21 +575,21 @@ export default function AdminUsers() {
 
       {/* Broadcast Modal */}
       <Dialog open={broadcastModal} onOpenChange={setBroadcastModal}>
-        <DialogContent className="bg-neutral-900 border-neutral-800">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-neutral-100">Broadcast to All Users</DialogTitle>
+            <DialogTitle>Broadcast to All Users</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <Select value={broadcastType} onValueChange={(v) => setBroadcastType(v as NotificationType)}>
-              <SelectTrigger className="bg-neutral-800 border-neutral-700"><SelectValue /></SelectTrigger>
-              <SelectContent className="bg-neutral-800 border-neutral-700">
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
                 <SelectItem value="announcement">Announcement</SelectItem>
                 <SelectItem value="info">Info</SelectItem>
                 <SelectItem value="warning">Warning</SelectItem>
               </SelectContent>
             </Select>
-            <Input placeholder="Title" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} className="bg-neutral-800 border-neutral-700" />
-            <Textarea placeholder="Message" value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} className="bg-neutral-800 border-neutral-700" />
+            <Input placeholder="Title" value={broadcastTitle} onChange={(e) => setBroadcastTitle(e.target.value)} />
+            <Textarea placeholder="Message" value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBroadcastModal(false)}>Cancel</Button>
