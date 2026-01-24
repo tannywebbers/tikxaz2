@@ -10,10 +10,10 @@ import {
   Eye,
   Ban,
   Check,
-  X,
   ChevronRight,
   Clock,
   RefreshCw,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +43,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -62,6 +63,15 @@ interface Moderator {
   is_suspended: boolean;
   suspend_reason: string | null;
   invited_at: string;
+}
+
+interface ActivityLog {
+  id: string;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
 }
 
 const AVAILABLE_PAGES = [
@@ -88,6 +98,10 @@ export default function AdminModerators() {
   const [addStep, setAddStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Activity logs
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  
   // Add form state
   const [newModEmail, setNewModEmail] = useState("");
   const [newModPassword, setNewModPassword] = useState("");
@@ -101,26 +115,24 @@ export default function AdminModerators() {
     fetchModerators();
   }, []);
 
+  useEffect(() => {
+    if (selectedModerator && showViewDialog) {
+      fetchActivityLogs(selectedModerator.user_id);
+    }
+  }, [selectedModerator, showViewDialog]);
+
   const fetchModerators = async () => {
     setIsLoading(true);
     try {
-      // Get moderator permissions
       const { data: permissionsData, error: permError } = await supabase
         .from("moderator_permissions")
         .select("*");
 
       if (permError) throw permError;
 
-      // Get user profiles
       const { data: profilesData } = await supabase
         .from("profiles")
         .select("user_id, email, first_name, last_name");
-
-      // Get user roles to confirm moderator status
-      const { data: rolesData } = await supabase
-        .from("user_roles")
-        .select("user_id, role")
-        .eq("role", "moderator");
 
       const mods: Moderator[] = (permissionsData || []).map(perm => {
         const profile = profilesData?.find(p => p.user_id === perm.user_id);
@@ -149,6 +161,26 @@ export default function AdminModerators() {
     }
   };
 
+  const fetchActivityLogs = async (moderatorId: string) => {
+    setLoadingLogs(true);
+    try {
+      const { data, error } = await supabase
+        .from("moderator_activity_logs")
+        .select("*")
+        .eq("moderator_id", moderatorId)
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setActivityLogs((data || []) as ActivityLog[]);
+    } catch (error) {
+      console.error("Error fetching activity logs:", error);
+      setActivityLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
   const handleAddModerator = async () => {
     if (!newModEmail || !newModPassword) {
       toast({ variant: "destructive", title: "Error", description: "Email and password are required." });
@@ -162,7 +194,6 @@ export default function AdminModerators() {
 
     setIsSubmitting(true);
     try {
-      // Create user via edge function (since we can't create users client-side)
       const { data: createData, error: createError } = await supabase.functions.invoke("create-moderator", {
         body: {
           email: newModEmail,
@@ -182,12 +213,13 @@ export default function AdminModerators() {
       setShowAddDialog(false);
       resetAddForm();
       fetchModerators();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error creating moderator:", error);
+      const message = error instanceof Error ? error.message : "Failed to create moderator.";
       toast({ 
         variant: "destructive", 
         title: "Error", 
-        description: error.message || "Failed to create moderator." 
+        description: message
       });
     } finally {
       setIsSubmitting(false);
@@ -231,14 +263,12 @@ export default function AdminModerators() {
     }
 
     try {
-      // Remove role
       await supabase
         .from("user_roles")
         .delete()
         .eq("user_id", mod.user_id)
         .eq("role", "moderator");
 
-      // Remove permissions
       await supabase
         .from("moderator_permissions")
         .delete()
@@ -264,17 +294,30 @@ export default function AdminModerators() {
     `${mod.first_name} ${mod.last_name}`.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const formatActivityAction = (action: string) => {
+    const actionMap: Record<string, string> = {
+      'chat_reply': 'Replied to chat',
+      'submission_review': 'Reviewed submission',
+      'user_ban': 'Banned user',
+      'user_unban': 'Unbanned user',
+      'notification_sent': 'Sent notification',
+      'login': 'Logged in',
+      'logout': 'Logged out',
+    };
+    return actionMap[action] || action;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Moderators</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Moderators</h1>
           <p className="text-sm text-muted-foreground">Manage moderator accounts and permissions</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchModerators} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 text-white ${isLoading ? "animate-spin" : ""}`} />
-            <span className="text-white">Refresh</span>
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -297,9 +340,9 @@ export default function AdminModerators() {
       {/* Moderators Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Shield className="w-5 h-5 text-white" />
-            <span className="text-white">Active Moderators</span>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5" />
+            Active Moderators
           </CardTitle>
           <CardDescription>List of all moderators with their permissions</CardDescription>
         </CardHeader>
@@ -318,11 +361,11 @@ export default function AdminModerators() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-white">Moderator</TableHead>
-                  <TableHead className="text-white">Status</TableHead>
-                  <TableHead className="text-white">Pages Access</TableHead>
-                  <TableHead className="text-white">Invited</TableHead>
-                  <TableHead className="text-white text-right">Actions</TableHead>
+                  <TableHead>Moderator</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Pages Access</TableHead>
+                  <TableHead>Invited</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -334,7 +377,7 @@ export default function AdminModerators() {
                           <Shield className="w-4 h-4 text-primary" />
                         </div>
                         <div>
-                          <p className="font-medium text-white">
+                          <p className="font-medium">
                             {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
                           </p>
                           <p className="text-sm text-muted-foreground">{mod.email}</p>
@@ -347,7 +390,7 @@ export default function AdminModerators() {
                           <Ban className="w-3 h-3" /> Suspended
                         </Badge>
                       ) : (
-                        <Badge variant="success" className="gap-1">
+                        <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
                           <Check className="w-3 h-3" /> Active
                         </Badge>
                       )}
@@ -382,7 +425,7 @@ export default function AdminModerators() {
                             setShowViewDialog(true);
                           }}
                         >
-                          <Eye className="w-4 h-4 text-white" />
+                          <Eye className="w-4 h-4" />
                         </Button>
                         <Button
                           size="icon"
@@ -512,63 +555,109 @@ export default function AdminModerators() {
         </DialogContent>
       </Dialog>
 
-      {/* View Moderator Dialog */}
+      {/* View Moderator Dialog with Activity Logs */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Moderator Details</DialogTitle>
           </DialogHeader>
           {selectedModerator && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Shield className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium">
-                    {selectedModerator.first_name 
-                      ? `${selectedModerator.first_name} ${selectedModerator.last_name || ""}` 
-                      : "Pending Setup"}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{selectedModerator.email}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Status</Label>
-                {selectedModerator.is_suspended ? (
-                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                    <p className="font-medium text-destructive">Suspended</p>
-                    {selectedModerator.suspend_reason && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Reason: {selectedModerator.suspend_reason}
-                      </p>
-                    )}
+            <Tabs defaultValue="details" className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                <TabsTrigger value="activity">Activity Logs</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="details" className="space-y-4 mt-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-primary" />
                   </div>
-                ) : (
-                  <Badge variant="success">Active</Badge>
-                )}
-              </div>
+                  <div>
+                    <p className="font-medium">
+                      {selectedModerator.first_name 
+                        ? `${selectedModerator.first_name} ${selectedModerator.last_name || ""}` 
+                        : "Pending Setup"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{selectedModerator.email}</p>
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Page Access</Label>
-                <div className="flex flex-wrap gap-2">
-                  {selectedModerator.pages.map(page => (
-                    <Badge key={page} variant="secondary">{page}</Badge>
-                  ))}
-                  {selectedModerator.pages.length === 0 && (
-                    <span className="text-sm text-muted-foreground">No pages assigned</span>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  {selectedModerator.is_suspended ? (
+                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                      <p className="font-medium text-destructive">Suspended</p>
+                      {selectedModerator.suspend_reason && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Reason: {selectedModerator.suspend_reason}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <Badge variant="outline" className="border-green-600 text-green-500">Active</Badge>
                   )}
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label>Invited On</Label>
-                <p className="text-sm text-muted-foreground">
-                  {new Date(selectedModerator.invited_at).toLocaleString()}
-                </p>
-              </div>
-            </div>
+                <div className="space-y-2">
+                  <Label>Page Access</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedModerator.pages.map(page => (
+                      <Badge key={page} variant="secondary">{page}</Badge>
+                    ))}
+                    {selectedModerator.pages.length === 0 && (
+                      <span className="text-sm text-muted-foreground">No pages assigned</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Invited On</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(selectedModerator.invited_at).toLocaleString()}
+                  </p>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="activity" className="mt-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity className="w-4 h-4 text-muted-foreground" />
+                  <Label>Recent Activity</Label>
+                </div>
+                
+                {loadingLogs ? (
+                  <div className="flex justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No activity recorded yet</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[300px]">
+                    <div className="space-y-3">
+                      {activityLogs.map(log => (
+                        <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg border border-border">
+                          <div className="w-2 h-2 rounded-full bg-primary mt-2" />
+                          <div className="flex-1">
+                            <p className="font-medium text-sm">{formatActivityAction(log.action)}</p>
+                            {log.target_type && (
+                              <p className="text-xs text-muted-foreground">
+                                {log.target_type}: {log.target_id}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(log.created_at).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>

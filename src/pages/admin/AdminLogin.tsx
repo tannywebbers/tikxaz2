@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, Lock, Mail, Eye, EyeOff, Loader2, KeyRound } from "lucide-react";
+import { Shield, Lock, Mail, Eye, EyeOff, Loader2, KeyRound, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,9 @@ const loginSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
+const MAX_ATTEMPTS = 3;
+const LOCKOUT_HOURS = 6;
+
 export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ email: "", password: "" });
@@ -27,8 +30,11 @@ export default function AdminLogin() {
   const [totpCode, setTotpCode] = useState("");
   const [tempUserId, setTempUserId] = useState<string | null>(null);
   const [isVerifying2FA, setIsVerifying2FA] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockUntil, setLockUntil] = useState<Date | null>(null);
   
-  const { signIn, user, isAdmin, isLoading: authLoading } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   // Redirect if already logged in as admin
@@ -37,6 +43,26 @@ export default function AdminLogin() {
       navigate("/baki/stage/admin");
     }
   }, [user, isAdmin, authLoading, navigate]);
+
+  // Check lockout status
+  const checkLockout = async (userId: string) => {
+    const { data: totpData } = await supabase
+      .from("admin_totp_secrets")
+      .select("locked_until, failed_attempts")
+      .eq("user_id", userId)
+      .maybeSingle();
+    
+    if (totpData?.locked_until) {
+      const lockedUntil = new Date(totpData.locked_until);
+      if (lockedUntil > new Date()) {
+        setIsLocked(true);
+        setLockUntil(lockedUntil);
+        return true;
+      }
+    }
+    setFailedAttempts(totpData?.failed_attempts || 0);
+    return false;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,6 +113,14 @@ export default function AdminLogin() {
       return;
     }
 
+    // Check lockout
+    const locked = await checkLockout(authData.user.id);
+    if (locked) {
+      await supabase.auth.signOut();
+      setIsLoading(false);
+      return;
+    }
+
     // Check if 2FA is enabled for this user
     const { data: totpData } = await supabase
       .from("admin_totp_secrets")
@@ -109,7 +143,7 @@ export default function AdminLogin() {
   };
 
   const handle2FAVerify = async () => {
-    if (totpCode.length !== 6 || !tempUserId) return;
+    if ((totpCode.length !== 6 && totpCode.length !== 8) || !tempUserId) return;
 
     setIsVerifying2FA(true);
     setAuthError("");
@@ -120,8 +154,23 @@ export default function AdminLogin() {
       });
 
       if (error || !data?.success) {
-        setAuthError(data?.error || "Invalid verification code");
+        // Handle lockout
+        if (data?.locked) {
+          setIsLocked(true);
+          setLockUntil(new Date(data.locked_until));
+          setAuthError("");
+        } else {
+          const newAttempts = (data?.failed_attempts || failedAttempts + 1);
+          setFailedAttempts(newAttempts);
+          const remaining = MAX_ATTEMPTS - newAttempts;
+          setAuthError(
+            remaining > 0 
+              ? `Invalid code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+              : "Account locked. Try again later."
+          );
+        }
         setIsVerifying2FA(false);
+        setTotpCode("");
         return;
       }
 
@@ -144,6 +193,15 @@ export default function AdminLogin() {
     }
   };
 
+  const formatLockTime = () => {
+    if (!lockUntil) return "";
+    const now = new Date();
+    const diff = lockUntil.getTime() - now.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-950">
@@ -161,26 +219,53 @@ export default function AdminLogin() {
       >
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-neutral-800 border border-neutral-700 flex items-center justify-center mx-auto mb-4">
-            {show2FA ? (
+            {isLocked ? (
+              <AlertTriangle className="w-8 h-8 text-red-400" />
+            ) : show2FA ? (
               <KeyRound className="w-8 h-8 text-neutral-300" />
             ) : (
               <Shield className="w-8 h-8 text-neutral-300" />
             )}
           </div>
           <h1 className="text-xl font-semibold text-neutral-100">
-            {show2FA ? "Two-Factor Authentication" : "Admin Access"}
+            {isLocked ? "Account Locked" : show2FA ? "Two-Factor Authentication" : "Admin Access"}
           </h1>
           <p className="text-sm text-neutral-500 mt-1">
-            {show2FA ? "Enter your 6-digit code" : "Restricted area"}
+            {isLocked 
+              ? `Try again in ${formatLockTime()}`
+              : show2FA 
+                ? "Enter your 6-digit code or backup code" 
+                : "Restricted area"}
           </p>
         </div>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6">
-          {show2FA ? (
+          {isLocked ? (
+            <div className="space-y-6 text-center">
+              <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                <p className="text-sm text-red-400">
+                  Too many failed attempts. Your account has been locked for security.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                className="w-full text-neutral-400"
+                onClick={() => {
+                  setIsLocked(false);
+                  setShow2FA(false);
+                  setTotpCode("");
+                  setTempUserId(null);
+                  setFailedAttempts(0);
+                }}
+              >
+                Back to Login
+              </Button>
+            </div>
+          ) : show2FA ? (
             <div className="space-y-6">
               <div className="flex justify-center">
                 <InputOTP
-                  maxLength={6}
+                  maxLength={8}
                   value={totpCode}
                   onChange={(value) => setTotpCode(value)}
                 >
@@ -191,12 +276,14 @@ export default function AdminLogin() {
                     <InputOTPSlot index={3} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
                     <InputOTPSlot index={4} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
                     <InputOTPSlot index={5} className="bg-neutral-800 border-neutral-700 text-neutral-100" />
+                    <InputOTPSlot index={6} className="bg-neutral-800 border-neutral-700 text-neutral-100 hidden" />
+                    <InputOTPSlot index={7} className="bg-neutral-800 border-neutral-700 text-neutral-100 hidden" />
                   </InputOTPGroup>
                 </InputOTP>
               </div>
 
               <p className="text-sm text-neutral-500 text-center">
-                Open your authenticator app and enter the 6-digit code
+                Enter the 6-digit code from your authenticator app, or an 8-character backup code
               </p>
 
               {authError && (
@@ -207,7 +294,7 @@ export default function AdminLogin() {
 
               <Button
                 className="w-full bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
-                disabled={totpCode.length !== 6 || isVerifying2FA}
+                disabled={(totpCode.length !== 6 && totpCode.length !== 8) || isVerifying2FA}
                 onClick={handle2FAVerify}
               >
                 {isVerifying2FA ? (

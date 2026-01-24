@@ -23,6 +23,8 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   isAdmin: boolean;
+  isModerator: boolean;
+  userRole: 'admin' | 'moderator' | 'user' | null;
   isLoading: boolean;
   signUp: (email: string, password: string, metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string; country?: string | null }) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
@@ -37,6 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isModerator, setIsModerator] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'moderator' | 'user' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -54,19 +58,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data as Profile | null;
   };
 
-  const checkAdminRole = async (userId: string) => {
+  const checkUserRole = async (userId: string): Promise<{ isAdmin: boolean; isModerator: boolean; role: 'admin' | 'moderator' | 'user' | null }> => {
     const { data, error } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", userId)
-      .eq("role", "admin")
-      .maybeSingle();
+      .eq("user_id", userId);
 
     if (error) {
-      console.error("Error checking admin role:", error);
-      return false;
+      console.error("Error checking user role:", error);
+      return { isAdmin: false, isModerator: false, role: null };
     }
-    return !!data;
+    
+    const roles = data?.map(r => r.role) || [];
+    const isAdmin = roles.includes('admin');
+    const isModerator = roles.includes('moderator');
+    
+    // Priority: admin > moderator > user
+    let role: 'admin' | 'moderator' | 'user' | null = null;
+    if (isAdmin) role = 'admin';
+    else if (isModerator) role = 'moderator';
+    else if (data && data.length > 0) role = 'user';
+    
+    return { isAdmin, isModerator, role };
   };
 
   const refreshProfile = async () => {
@@ -88,13 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTimeout(async () => {
             const profileData = await fetchProfile(session.user.id);
             setProfile(profileData);
-            const adminStatus = await checkAdminRole(session.user.id);
-            setIsAdmin(adminStatus);
+            const roleStatus = await checkUserRole(session.user.id);
+            setIsAdmin(roleStatus.isAdmin || roleStatus.isModerator); // Both can access admin panel
+            setIsModerator(roleStatus.isModerator);
+            setUserRole(roleStatus.role);
             setIsLoading(false);
           }, 0);
         } else {
           setProfile(null);
           setIsAdmin(false);
+          setIsModerator(false);
+          setUserRole(null);
           setIsLoading(false);
         }
       }
@@ -109,8 +126,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTimeout(async () => {
           const profileData = await fetchProfile(session.user.id);
           setProfile(profileData);
-          const adminStatus = await checkAdminRole(session.user.id);
-          setIsAdmin(adminStatus);
+          const roleStatus = await checkUserRole(session.user.id);
+          setIsAdmin(roleStatus.isAdmin || roleStatus.isModerator);
+          setIsModerator(roleStatus.isModerator);
+          setUserRole(roleStatus.role);
           setIsLoading(false);
         }, 0);
       } else {
@@ -183,6 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setProfile(null);
     setIsAdmin(false);
+    setIsModerator(false);
+    setUserRole(null);
     toast({
       title: "Signed out",
       description: "You have been signed out successfully.",
@@ -195,6 +216,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       isAdmin,
+      isModerator,
+      userRole,
       isLoading,
       signUp,
       signIn,
