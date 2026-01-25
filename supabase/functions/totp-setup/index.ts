@@ -56,7 +56,7 @@ serve(async (req) => {
       );
     }
 
-    // Verify user is admin
+    // Verify user
     const { data: { user }, error: authError } = await supabase.auth.getUser(
       authHeader.replace("Bearer ", "")
     );
@@ -68,17 +68,18 @@ serve(async (req) => {
       );
     }
 
-    // Check if user is admin
+    // Check if user is admin or moderator
     const { data: roleData } = await supabase
       .from("user_roles")
       .select("role")
-      .eq("user_id", user.id)
-      .eq("role", "admin")
-      .maybeSingle();
+      .eq("user_id", user.id);
 
-    if (!roleData) {
+    const roles = roleData?.map(r => r.role) || [];
+    const isAdminOrModerator = roles.includes('admin') || roles.includes('moderator');
+
+    if (!isAdminOrModerator) {
       return new Response(
-        JSON.stringify({ error: "Admin access required" }),
+        JSON.stringify({ error: "Admin or moderator access required" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -100,7 +101,7 @@ serve(async (req) => {
       const issuer = appSettings?.app_name || "TikPoints";
       const accountName = user.email || "admin";
 
-      // Store secret (encrypted in production, plain for simplicity here)
+      // Store secret
       const { error: insertError } = await supabase
         .from("admin_totp_secrets")
         .upsert({
@@ -108,6 +109,8 @@ serve(async (req) => {
           secret_encrypted: secret,
           backup_codes: backupCodes,
           is_verified: false,
+          failed_attempts: 0,
+          locked_until: null,
         }, { onConflict: "user_id" });
 
       if (insertError) {

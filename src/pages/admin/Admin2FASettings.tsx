@@ -8,6 +8,7 @@ import {
   Check,
   AlertTriangle,
   Smartphone,
+  ShieldOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +49,7 @@ export default function Admin2FASettings() {
   const [isSetup, setIsSetup] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showSetupDialog, setShowSetupDialog] = useState(false);
+  const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [setupStep, setSetupStep] = useState(1);
   const [setupData, setSetupData] = useState<{
     secret: string;
@@ -45,16 +57,18 @@ export default function Admin2FASettings() {
     backupCodes: string[];
   } | null>(null);
   const [verifyCode, setVerifyCode] = useState("");
+  const [disableCode, setDisableCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isDisabling, setIsDisabling] = useState(false);
   const [copiedSecret, setCopiedSecret] = useState(false);
   const [copiedCodes, setCopiedCodes] = useState(false);
   
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
 
   useEffect(() => {
     checkStatus();
-  }, []);
+  }, [user]);
 
   const checkStatus = async () => {
     if (!user) return;
@@ -126,6 +140,34 @@ export default function Admin2FASettings() {
     }
   };
 
+  const handleDisable2FA = async () => {
+    if (disableCode.length < 6 || !user) return;
+
+    setIsDisabling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("totp-verify", {
+        body: { user_id: user.id, code: disableCode, action: "disable" },
+      });
+
+      if (error || !data?.success) {
+        toast({ variant: "destructive", title: "Invalid Code", description: "Please enter a valid code to disable 2FA." });
+        setIsDisabling(false);
+        return;
+      }
+
+      setIsEnabled(false);
+      setIsSetup(false);
+      setShowDisableDialog(false);
+      setDisableCode("");
+      toast({ title: "2FA Disabled", description: "Two-factor authentication has been disabled for your account." });
+    } catch (err) {
+      console.error("Disable error:", err);
+      toast({ variant: "destructive", title: "Error", description: "Failed to disable 2FA." });
+    } finally {
+      setIsDisabling(false);
+    }
+  };
+
   const copyToClipboard = (text: string, type: "secret" | "codes") => {
     navigator.clipboard.writeText(text);
     if (type === "secret") {
@@ -148,15 +190,17 @@ export default function Admin2FASettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Two-Factor Authentication</h1>
-        <p className="text-sm text-muted-foreground">Secure your admin account with TOTP</p>
+        <h1 className="text-2xl font-semibold text-foreground">Two-Factor Authentication</h1>
+        <p className="text-sm text-muted-foreground">
+          Secure your {userRole === 'moderator' ? 'moderator' : 'admin'} account with TOTP
+        </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Shield className="w-5 h-5 text-white" />
-            <span className="text-white">2FA Status</span>
+          <CardTitle className="text-foreground flex items-center gap-2">
+            <Shield className="w-5 h-5 text-foreground" />
+            <span>2FA Status</span>
           </CardTitle>
           <CardDescription>
             Two-factor authentication adds an extra layer of security to your account
@@ -169,7 +213,7 @@ export default function Admin2FASettings() {
                 <KeyRound className={`w-5 h-5 ${isEnabled ? "text-green-500" : "text-muted-foreground"}`} />
               </div>
               <div>
-                <p className="font-medium text-white">Authenticator App</p>
+                <p className="font-medium text-foreground">Authenticator App</p>
                 <p className="text-sm text-muted-foreground">Google Authenticator, Authy, etc.</p>
               </div>
             </div>
@@ -185,16 +229,28 @@ export default function Admin2FASettings() {
                 <div>
                   <p className="font-medium text-yellow-500">Recommended</p>
                   <p className="text-sm text-muted-foreground">
-                    Enable 2FA to protect your admin account from unauthorized access.
+                    Enable 2FA to protect your {userRole === 'moderator' ? 'moderator' : 'admin'} account from unauthorized access.
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          <Button onClick={handleStartSetup} className="w-full" disabled={isLoading}>
-            {isEnabled ? "Reconfigure 2FA" : "Enable 2FA"}
-          </Button>
+          <div className="flex gap-3">
+            <Button onClick={handleStartSetup} className="flex-1" disabled={isLoading}>
+              {isEnabled ? "Reconfigure 2FA" : "Enable 2FA"}
+            </Button>
+            {isEnabled && (
+              <Button 
+                variant="destructive" 
+                onClick={() => setShowDisableDialog(true)} 
+                disabled={isLoading}
+              >
+                <ShieldOff className="w-4 h-4 mr-2" />
+                Disable
+              </Button>
+            )}
+          </div>
         </CardContent>
       </Card>
 
@@ -347,6 +403,59 @@ export default function Admin2FASettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Disable 2FA Dialog */}
+      <AlertDialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disable Two-Factor Authentication?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will make your account less secure. Enter your current 2FA code or a backup code to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="py-4">
+            <Label className="mb-2 block">Enter 2FA Code or Backup Code</Label>
+            <InputOTP
+              maxLength={8}
+              value={disableCode}
+              onChange={(value) => setDisableCode(value)}
+            >
+              <InputOTPGroup>
+                <InputOTPSlot index={0} />
+                <InputOTPSlot index={1} />
+                <InputOTPSlot index={2} />
+                <InputOTPSlot index={3} />
+                <InputOTPSlot index={4} />
+                <InputOTPSlot index={5} />
+                <InputOTPSlot index={6} />
+                <InputOTPSlot index={7} />
+              </InputOTPGroup>
+            </InputOTP>
+            <p className="text-xs text-muted-foreground mt-2">
+              Enter 6-digit TOTP code or 8-character backup code
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDisableCode("")}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDisable2FA}
+              disabled={disableCode.length < 6 || isDisabling}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDisabling ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Disabling...
+                </>
+              ) : (
+                "Disable 2FA"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

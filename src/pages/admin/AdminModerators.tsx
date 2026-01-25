@@ -14,12 +14,15 @@ import {
   Clock,
   RefreshCw,
   Activity,
+  DollarSign,
+  Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -60,6 +63,7 @@ interface Moderator {
   can_manage_chat: boolean;
   can_review_submissions: boolean;
   can_manage_users: boolean;
+  can_credit_users: boolean;
   is_suspended: boolean;
   suspend_reason: string | null;
   invited_at: string;
@@ -82,6 +86,7 @@ const AVAILABLE_PAGES = [
   { key: "ai-config", label: "AI Config", description: "Configure AI settings" },
   { key: "prompts", label: "AI Prompts", description: "Manage verification prompts" },
   { key: "visual-editor", label: "Visual Editor", description: "Edit landing pages" },
+  { key: "landing", label: "Landing CMS", description: "Manage landing page content" },
   { key: "app-settings", label: "App Settings", description: "Platform configuration" },
   { key: "email", label: "Email Config", description: "Email settings" },
   { key: "ads", label: "Ads Settings", description: "Advertisement configuration" },
@@ -93,6 +98,7 @@ export default function AdminModerators() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showViewDialog, setShowViewDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showSuspendDialog, setShowSuspendDialog] = useState(false);
   const [selectedModerator, setSelectedModerator] = useState<Moderator | null>(null);
   const [addStep, setAddStep] = useState(1);
@@ -106,7 +112,12 @@ export default function AdminModerators() {
   const [newModEmail, setNewModEmail] = useState("");
   const [newModPassword, setNewModPassword] = useState("");
   const [selectedPages, setSelectedPages] = useState<string[]>(["dashboard", "live-chats"]);
+  const [canCreditUsers, setCanCreditUsers] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
+  
+  // Edit state
+  const [editPages, setEditPages] = useState<string[]>([]);
+  const [editCanCreditUsers, setEditCanCreditUsers] = useState(false);
   
   const { toast } = useToast();
   const { user } = useAuth();
@@ -146,6 +157,7 @@ export default function AdminModerators() {
           can_manage_chat: perm.can_manage_chat,
           can_review_submissions: perm.can_review_submissions,
           can_manage_users: perm.can_manage_users,
+          can_credit_users: false, // Will be managed separately
           is_suspended: perm.is_suspended,
           suspend_reason: perm.suspend_reason,
           invited_at: perm.invited_at,
@@ -226,6 +238,32 @@ export default function AdminModerators() {
     }
   };
 
+  const handleUpdateModerator = async () => {
+    if (!selectedModerator) return;
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("moderator_permissions")
+        .update({
+          pages: editPages,
+          can_manage_users: editCanCreditUsers, // We'll use can_manage_users for credit permission
+        })
+        .eq("id", selectedModerator.id);
+
+      if (error) throw error;
+
+      toast({ title: "Success!", description: "Moderator permissions updated." });
+      setShowEditDialog(false);
+      fetchModerators();
+    } catch (error) {
+      console.error("Error updating moderator:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to update moderator." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSuspendModerator = async () => {
     if (!selectedModerator) return;
 
@@ -282,10 +320,18 @@ export default function AdminModerators() {
     }
   };
 
+  const openEditDialog = (mod: Moderator) => {
+    setSelectedModerator(mod);
+    setEditPages([...mod.pages]);
+    setEditCanCreditUsers(mod.can_manage_users);
+    setShowEditDialog(true);
+  };
+
   const resetAddForm = () => {
     setNewModEmail("");
     setNewModPassword("");
     setSelectedPages(["dashboard", "live-chats"]);
+    setCanCreditUsers(false);
     setAddStep(1);
   };
 
@@ -309,7 +355,7 @@ export default function AdminModerators() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Moderators</h1>
           <p className="text-sm text-muted-foreground">Manage moderator accounts and permissions</p>
@@ -340,9 +386,9 @@ export default function AdminModerators() {
       {/* Moderators Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="w-5 h-5" />
-            Active Moderators
+          <CardTitle className="flex items-center gap-2 text-foreground">
+            <Shield className="w-5 h-5 text-foreground" />
+            <span>Active Moderators</span>
           </CardTitle>
           <CardDescription>List of all moderators with their permissions</CardDescription>
         </CardHeader>
@@ -358,99 +404,108 @@ export default function AdminModerators() {
               <p className="text-sm">Add your first moderator to get started</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Moderator</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Pages Access</TableHead>
-                  <TableHead>Invited</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredModerators.map(mod => (
-                  <TableRow key={mod.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                          <Shield className="w-4 h-4 text-primary" />
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Moderator</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Pages Access</TableHead>
+                    <TableHead>Invited</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredModerators.map(mod => (
+                    <TableRow key={mod.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Shield className="w-4 h-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{mod.email}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">
-                            {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
-                          </p>
-                          <p className="text-sm text-muted-foreground">{mod.email}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {mod.is_suspended ? (
-                        <Badge variant="destructive" className="gap-1">
-                          <Ban className="w-3 h-3" /> Suspended
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
-                          <Check className="w-3 h-3" /> Active
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {mod.pages.slice(0, 3).map(page => (
-                          <Badge key={page} variant="outline" className="text-xs">
-                            {page}
+                      </TableCell>
+                      <TableCell>
+                        {mod.is_suspended ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <Ban className="w-3 h-3" /> Suspended
                           </Badge>
-                        ))}
-                        {mod.pages.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{mod.pages.length - 3} more
+                        ) : (
+                          <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
+                            <Check className="w-3 h-3" /> Active
                           </Badge>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {new Date(mod.invited_at).toLocaleDateString()}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            setSelectedModerator(mod);
-                            setShowViewDialog(true);
-                          }}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => {
-                            setSelectedModerator(mod);
-                            setShowSuspendDialog(true);
-                          }}
-                        >
-                          <Ban className={`w-4 h-4 ${mod.is_suspended ? "text-green-500" : "text-yellow-500"}`} />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => handleDeleteModerator(mod)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {mod.pages.slice(0, 3).map(page => (
+                            <Badge key={page} variant="outline" className="text-xs">
+                              {page}
+                            </Badge>
+                          ))}
+                          {mod.pages.length > 3 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{mod.pages.length - 3} more
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(mod.invited_at).toLocaleDateString()}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedModerator(mod);
+                              setShowViewDialog(true);
+                            }}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openEditDialog(mod)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedModerator(mod);
+                              setShowSuspendDialog(true);
+                            }}
+                          >
+                            <Ban className={`w-4 h-4 ${mod.is_suspended ? "text-green-500" : "text-yellow-500"}`} />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteModerator(mod)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -491,34 +546,50 @@ export default function AdminModerators() {
               </div>
             </div>
           ) : (
-            <ScrollArea className="max-h-[400px] pr-4">
-              <div className="space-y-3">
-                {AVAILABLE_PAGES.map(page => (
-                  <div
-                    key={page.key}
-                    className={`flex items-center space-x-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                      selectedPages.includes(page.key) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
-                    }`}
-                    onClick={() => {
-                      if (selectedPages.includes(page.key)) {
-                        setSelectedPages(selectedPages.filter(p => p !== page.key));
-                      } else {
-                        setSelectedPages([...selectedPages, page.key]);
-                      }
-                    }}
-                  >
-                    <Checkbox
-                      checked={selectedPages.includes(page.key)}
-                      onCheckedChange={() => {}}
-                    />
-                    <div className="flex-1">
-                      <p className="font-medium">{page.label}</p>
-                      <p className="text-sm text-muted-foreground">{page.description}</p>
+            <div className="space-y-4">
+              <ScrollArea className="max-h-[300px] pr-4">
+                <div className="space-y-3">
+                  {AVAILABLE_PAGES.map(page => (
+                    <div
+                      key={page.key}
+                      className={`flex items-center space-x-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                        selectedPages.includes(page.key) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                      }`}
+                      onClick={() => {
+                        if (selectedPages.includes(page.key)) {
+                          setSelectedPages(selectedPages.filter(p => p !== page.key));
+                        } else {
+                          setSelectedPages([...selectedPages, page.key]);
+                        }
+                      }}
+                    >
+                      <Checkbox
+                        checked={selectedPages.includes(page.key)}
+                        onCheckedChange={() => {}}
+                      />
+                      <div className="flex-1">
+                        <p className="font-medium">{page.label}</p>
+                        <p className="text-sm text-muted-foreground">{page.description}</p>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium">Can Credit/Debit Users</p>
+                    <p className="text-sm text-muted-foreground">Allow managing user points</p>
                   </div>
-                ))}
+                </div>
+                <Switch
+                  checked={canCreditUsers}
+                  onCheckedChange={setCanCreditUsers}
+                />
               </div>
-            </ScrollArea>
+            </div>
           )}
 
           <DialogFooter>
@@ -555,26 +626,99 @@ export default function AdminModerators() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit Moderator Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Moderator Permissions</DialogTitle>
+            <DialogDescription>
+              Update page access and permissions for {selectedModerator?.email}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <ScrollArea className="max-h-[300px] pr-4">
+              <div className="space-y-3">
+                {AVAILABLE_PAGES.map(page => (
+                  <div
+                    key={page.key}
+                    className={`flex items-center space-x-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      editPages.includes(page.key) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
+                    }`}
+                    onClick={() => {
+                      if (editPages.includes(page.key)) {
+                        setEditPages(editPages.filter(p => p !== page.key));
+                      } else {
+                        setEditPages([...editPages, page.key]);
+                      }
+                    }}
+                  >
+                    <Checkbox
+                      checked={editPages.includes(page.key)}
+                      onCheckedChange={() => {}}
+                    />
+                    <div className="flex-1">
+                      <p className="font-medium">{page.label}</p>
+                      <p className="text-sm text-muted-foreground">{page.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">Can Credit/Debit Users</p>
+                  <p className="text-sm text-muted-foreground">Allow managing user points</p>
+                </div>
+              </div>
+              <Switch
+                checked={editCanCreditUsers}
+                onCheckedChange={setEditCanCreditUsers}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdateModerator} disabled={isSubmitting || editPages.length === 0}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* View Moderator Dialog with Activity Logs */}
       <Dialog open={showViewDialog} onOpenChange={setShowViewDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Moderator Details</DialogTitle>
           </DialogHeader>
           {selectedModerator && (
-            <Tabs defaultValue="details" className="w-full">
+            <Tabs defaultValue="details" className="w-full flex-1 overflow-hidden flex flex-col">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="details">Details</TabsTrigger>
                 <TabsTrigger value="activity">Activity Logs</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="details" className="space-y-4 mt-4">
+              <TabsContent value="details" className="space-y-4 mt-4 overflow-auto">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <Shield className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <p className="font-medium">
+                    <p className="font-medium text-foreground">
                       {selectedModerator.first_name 
                         ? `${selectedModerator.first_name} ${selectedModerator.last_name || ""}` 
                         : "Pending Setup"}
@@ -619,7 +763,7 @@ export default function AdminModerators() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="activity" className="mt-4">
+              <TabsContent value="activity" className="mt-4 flex-1 overflow-hidden flex flex-col">
                 <div className="flex items-center gap-2 mb-4">
                   <Activity className="w-4 h-4 text-muted-foreground" />
                   <Label>Recent Activity</Label>
@@ -635,13 +779,13 @@ export default function AdminModerators() {
                     <p className="text-sm">No activity recorded yet</p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-[300px]">
-                    <div className="space-y-3">
+                  <ScrollArea className="flex-1">
+                    <div className="space-y-3 pr-4">
                       {activityLogs.map(log => (
                         <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg border border-border">
                           <div className="w-2 h-2 rounded-full bg-primary mt-2" />
                           <div className="flex-1">
-                            <p className="font-medium text-sm">{formatActivityAction(log.action)}</p>
+                            <p className="font-medium text-sm text-foreground">{formatActivityAction(log.action)}</p>
                             {log.target_type && (
                               <p className="text-xs text-muted-foreground">
                                 {log.target_type}: {log.target_id}

@@ -143,10 +143,28 @@ serve(async (req) => {
       }
     }
 
+    // Normalize code input
+    const normalizedCode = code.toUpperCase().replace(/\s/g, "");
+    
     // Check if it's a backup code (8 chars)
-    if (code.length === 8 && totpData.backup_codes?.includes(code.toUpperCase())) {
-      // Remove used backup code and reset failed attempts
-      const newCodes = totpData.backup_codes.filter((c: string) => c !== code.toUpperCase());
+    if (normalizedCode.length === 8 && totpData.backup_codes?.includes(normalizedCode)) {
+      // Remove used backup code
+      const newCodes = totpData.backup_codes.filter((c: string) => c !== normalizedCode);
+      
+      // Handle disable action with backup code
+      if (action === "disable") {
+        await supabase
+          .from("admin_totp_secrets")
+          .delete()
+          .eq("user_id", user_id);
+          
+        return new Response(
+          JSON.stringify({ success: true, backup_code_used: true, action: "disable" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
+      // Reset failed attempts for successful backup code
       await supabase
         .from("admin_totp_secrets")
         .update({ backup_codes: newCodes, failed_attempts: 0, locked_until: null })
@@ -158,8 +176,8 @@ serve(async (req) => {
       );
     }
 
-    // Verify TOTP code
-    const isValid = await verifyTOTP(totpData.secret_encrypted, code);
+    // Verify TOTP code (6 digits)
+    const isValid = normalizedCode.length === 6 && await verifyTOTP(totpData.secret_encrypted, normalizedCode);
 
     if (!isValid) {
       // Increment failed attempts
@@ -209,6 +227,19 @@ serve(async (req) => {
     // If this is initial verification, mark as verified
     if (action === "verify-setup" && !totpData.is_verified) {
       updateData.is_verified = true;
+    }
+    
+    // Handle disable action with TOTP code
+    if (action === "disable") {
+      await supabase
+        .from("admin_totp_secrets")
+        .delete()
+        .eq("user_id", user_id);
+        
+      return new Response(
+        JSON.stringify({ success: true, action: "disable" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     await supabase
