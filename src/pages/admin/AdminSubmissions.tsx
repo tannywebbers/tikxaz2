@@ -7,7 +7,8 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  Filter
+  Filter,
+  Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { SubmissionReviewDialog } from "./components/SubmissionReviewDialog";
@@ -49,8 +60,10 @@ export default function AdminSubmissions() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("needs_review");
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [deleteSubmission, setDeleteSubmission] = useState<Submission | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -80,6 +93,29 @@ export default function AdminSubmissions() {
       toast({ variant: "destructive", title: "Error", description: "Failed to load submissions." });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSubmission = async () => {
+    if (!deleteSubmission) return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from("task_submissions")
+        .delete()
+        .eq("id", deleteSubmission.id);
+        
+      if (error) throw error;
+      
+      setSubmissions(prev => prev.filter(s => s.id !== deleteSubmission.id));
+      toast({ title: "Deleted", description: "Submission has been deleted." });
+      setDeleteSubmission(null);
+    } catch (error) {
+      console.error("Error deleting submission:", error);
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete submission." });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -114,11 +150,11 @@ export default function AdminSubmissions() {
       comment: "bg-blue-500/10 text-blue-400",
       save: "bg-yellow-500/10 text-yellow-400",
       follow: "bg-purple-500/10 text-purple-400",
-      combo_mini: "bg-gradient-to-r from-red-500/10 via-blue-500/10 to-yellow-500/10 text-neutral-100",
-      combo_large: "bg-gradient-to-r from-red-500/10 via-blue-500/10 via-yellow-500/10 to-purple-500/10 text-neutral-100",
+      combo_mini: "bg-gradient-to-r from-red-500/10 via-blue-500/10 to-yellow-500/10 text-foreground",
+      combo_large: "bg-gradient-to-r from-red-500/10 via-blue-500/10 via-yellow-500/10 to-purple-500/10 text-foreground",
     };
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${colors[type] || "bg-neutral-700"}`}>
+      <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${colors[type] || "bg-muted"}`}>
         {type.replace("_", " ")}
       </span>
     );
@@ -127,34 +163,34 @@ export default function AdminSubmissions() {
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-neutral-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-100">Submissions</h1>
-          <p className="text-sm text-neutral-500 mt-1">{submissions.length} total submissions</p>
+          <h1 className="text-2xl font-semibold text-foreground">Submissions</h1>
+          <p className="text-sm text-muted-foreground mt-1">{submissions.length} total submissions</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search..."
-              className="pl-10 w-48 bg-neutral-800 border-neutral-700 text-neutral-100"
+              className="pl-10 w-full sm:w-48"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40 bg-neutral-800 border-neutral-700 text-neutral-100">
-              <Filter className="w-4 h-4 mr-2 text-neutral-500" />
+            <SelectTrigger className="w-full sm:w-40">
+              <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-neutral-800 border-neutral-700">
+            <SelectContent className="bg-popover border-border">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
               <SelectItem value="needs_review">Needs Review</SelectItem>
@@ -165,53 +201,67 @@ export default function AdminSubmissions() {
         </div>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-neutral-800 hover:bg-transparent">
-              <TableHead className="text-neutral-400">User</TableHead>
-              <TableHead className="text-neutral-400">Task Type</TableHead>
-              <TableHead className="text-neutral-400">Status</TableHead>
-              <TableHead className="text-neutral-400">AI Confidence</TableHead>
-              <TableHead className="text-neutral-400">Points</TableHead>
-              <TableHead className="text-neutral-400">Date</TableHead>
-              <TableHead className="text-neutral-400">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredSubmissions.map(sub => (
-              <TableRow key={sub.id} className="border-neutral-800 hover:bg-neutral-800/50">
-                <TableCell>
-                  <div>
-                    <div className="font-medium text-neutral-100">
-                      {sub.profiles?.tiktok_name || `@${sub.profiles?.tiktok_username}`}
-                    </div>
-                    <div className="text-xs text-neutral-500">{sub.profiles?.email}</div>
-                  </div>
-                </TableCell>
-                <TableCell>{taskTypeBadge(sub.ads?.task_type || "unknown")}</TableCell>
-                <TableCell>{statusBadge(sub.status)}</TableCell>
-                <TableCell className="text-neutral-400">
-                  {sub.ai_analysis?.confidence ? `${sub.ai_analysis.confidence}%` : "-"}
-                </TableCell>
-                <TableCell className="text-neutral-300">{sub.points_awarded || "-"}</TableCell>
-                <TableCell className="text-neutral-500">
-                  {new Date(sub.created_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setSelectedSubmission(sub)}
-                    className="text-neutral-400 hover:text-neutral-100"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                </TableCell>
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-muted-foreground">User</TableHead>
+                <TableHead className="text-muted-foreground">Task Type</TableHead>
+                <TableHead className="text-muted-foreground">Status</TableHead>
+                <TableHead className="text-muted-foreground">AI Confidence</TableHead>
+                <TableHead className="text-muted-foreground">Points</TableHead>
+                <TableHead className="text-muted-foreground">Date</TableHead>
+                <TableHead className="text-muted-foreground">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredSubmissions.map(sub => (
+                <TableRow key={sub.id} className="border-border hover:bg-muted/50">
+                  <TableCell>
+                    <div>
+                      <div className="font-medium text-foreground">
+                        {sub.profiles?.tiktok_name || `@${sub.profiles?.tiktok_username}`}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{sub.profiles?.email}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{taskTypeBadge(sub.ads?.task_type || "unknown")}</TableCell>
+                  <TableCell>{statusBadge(sub.status)}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {sub.ai_analysis?.confidence ? `${sub.ai_analysis.confidence}%` : "-"}
+                  </TableCell>
+                  <TableCell className="text-foreground">{sub.points_awarded || "-"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(sub.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedSubmission(sub)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      {sub.status === "approved" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteSubmission(sub)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <SubmissionReviewDialog
@@ -219,6 +269,29 @@ export default function AdminSubmissions() {
         onClose={() => setSelectedSubmission(null)}
         onUpdate={fetchSubmissions}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteSubmission} onOpenChange={(open) => !open && setDeleteSubmission(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Submission?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this approved submission. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteSubmission}
+              disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

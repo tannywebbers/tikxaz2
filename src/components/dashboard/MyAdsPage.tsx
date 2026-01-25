@@ -11,12 +11,23 @@ import {
   BarChart3,
   TrendingUp,
   Users,
-  Coins
+  Coins,
+  Trash2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -50,12 +61,14 @@ const taskTypeLabels: Record<string, string> = {
 };
 
 export function MyAdsPage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   const { toast } = useToast();
   const [ads, setAds] = useState<Ad[]>([]);
   const [adStats, setAdStats] = useState<Record<string, AdStats>>({});
   const [loading, setLoading] = useState(true);
   const [selectedAd, setSelectedAd] = useState<string | null>(null);
+  const [deleteAd, setDeleteAd] = useState<Ad | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -132,9 +145,86 @@ export function MyAdsPage() {
     }
   };
 
+  const handleDeleteAd = async () => {
+    if (!deleteAd || !user) return;
+    
+    setIsDeleting(true);
+    try {
+      const stats = adStats[deleteAd.id] || { totalSpent: 0 };
+      const totalBudget = deleteAd.required_completions * deleteAd.points_per_task;
+      const refundAmount = totalBudget - stats.totalSpent;
+      
+      // Delete the ad
+      const { error: deleteError } = await supabase
+        .from("ads")
+        .delete()
+        .eq("id", deleteAd.id);
+        
+      if (deleteError) throw deleteError;
+      
+      // Refund remaining balance to user
+      if (refundAmount > 0) {
+        // Update user's points
+        const { error: updateError } = await supabase.rpc("credit_purchase_points", {
+          _user_id: user.id,
+          _points: refundAmount,
+          _amount_paid: 0,
+          _reference: `refund_ad_${deleteAd.id}`
+        });
+        
+        // If RPC fails (due to duplicate reference), try direct update
+        if (updateError) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("tik_points")
+            .eq("user_id", user.id)
+            .single();
+            
+          if (profile) {
+            await supabase
+              .from("profiles")
+              .update({ tik_points: profile.tik_points + refundAmount })
+              .eq("user_id", user.id);
+          }
+        }
+        
+        // Refresh profile to update points display
+        await refreshProfile();
+        
+        toast({
+          title: "Ad Deleted",
+          description: `${refundAmount} TikPoints have been refunded to your account.`,
+        });
+      } else {
+        toast({
+          title: "Ad Deleted",
+          description: "Your ad has been deleted successfully.",
+        });
+      }
+      
+      setAds(prev => prev.filter(a => a.id !== deleteAd.id));
+      setDeleteAd(null);
+    } catch (error) {
+      console.error("Error deleting ad:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete ad",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const getAdStatus = (ad: Ad) => {
     if (ad.completed_count >= ad.required_completions) return "completed";
     return ad.is_active ? "active" : "paused";
+  };
+
+  const calculateRefund = (ad: Ad) => {
+    const stats = adStats[ad.id] || { totalSpent: 0 };
+    const totalBudget = ad.required_completions * ad.points_per_task;
+    return totalBudget - stats.totalSpent;
   };
 
   if (loading) {
@@ -172,6 +262,7 @@ export function MyAdsPage() {
             const status = getAdStatus(ad);
             const progress = (ad.completed_count / ad.required_completions) * 100;
             const remaining = ad.required_completions - ad.completed_count;
+            const refundAmount = calculateRefund(ad);
 
             return (
               <motion.div
@@ -286,6 +377,15 @@ export function MyAdsPage() {
                           <Eye className="w-4 h-4 mr-1" />
                           Details
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setDeleteAd(ad)}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete
+                        </Button>
                       </div>
                     </div>
 
@@ -310,10 +410,8 @@ export function MyAdsPage() {
                             <p className="font-medium">{ad.points_per_task} TikPoints</p>
                           </div>
                           <div>
-                            <p className="text-sm text-muted-foreground">Completion Rate</p>
-                            <p className="font-medium">
-                              {((stats.approved / (stats.approved + stats.rejected)) * 100 || 0).toFixed(1)}%
-                            </p>
+                            <p className="text-sm text-muted-foreground">Refund if Deleted</p>
+                            <p className="font-medium text-primary">{refundAmount} TikPoints</p>
                           </div>
                         </div>
                       </motion.div>
@@ -325,6 +423,38 @@ export function MyAdsPage() {
           })}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteAd} onOpenChange={(open) => !open && setDeleteAd(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this Ad?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteAd && (
+                <>
+                  This will permanently delete this ad and all associated submissions.
+                  {calculateRefund(deleteAd) > 0 && (
+                    <span className="block mt-2 text-primary font-medium">
+                      You will be refunded {calculateRefund(deleteAd)} TikPoints for unused completions.
+                    </span>
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteAd}
+              disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Delete Ad
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
