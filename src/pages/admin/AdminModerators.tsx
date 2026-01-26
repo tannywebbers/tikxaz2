@@ -40,6 +40,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  MobileCards,
+  MobileCard,
+  MobileCardRow,
+  MobileCardHeader,
+  MobileCardActions,
+} from "@/components/ui/responsive-table";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -404,108 +411,201 @@ export default function AdminModerators() {
               <p className="text-sm">Add your first moderator to get started</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Moderator</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Pages Access</TableHead>
-                    <TableHead>Invited</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredModerators.map(mod => (
-                    <TableRow key={mod.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Shield className="w-4 h-4 text-primary" />
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Moderator</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Pages Access</TableHead>
+                      <TableHead>Invited</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredModerators.map(mod => (
+                      <TableRow key={mod.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Shield className="w-4 h-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground">
+                                {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
+                              </p>
+                              <p className="text-sm text-muted-foreground">{mod.email}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-foreground">
-                              {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{mod.email}</p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {mod.is_suspended ? (
-                          <Badge variant="destructive" className="gap-1">
-                            <Ban className="w-3 h-3" /> Suspended
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
-                            <Check className="w-3 h-3" /> Active
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {mod.pages.slice(0, 3).map(page => (
-                            <Badge key={page} variant="outline" className="text-xs">
-                              {page}
+                        </TableCell>
+                        <TableCell>
+                          {mod.is_suspended ? (
+                            <Badge variant="destructive" className="gap-1">
+                              <Ban className="w-3 h-3" /> Suspended
                             </Badge>
-                          ))}
-                          {mod.pages.length > 3 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{mod.pages.length - 3} more
+                          ) : (
+                            <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
+                              <Check className="w-3 h-3" /> Active
                             </Badge>
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {mod.pages.slice(0, 3).map(page => (
+                              <Badge key={page} variant="outline" className="text-xs">
+                                {page}
+                              </Badge>
+                            ))}
+                            {mod.pages.length > 3 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{mod.pages.length - 3} more
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {new Date(mod.invited_at).toLocaleDateString()}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedModerator(mod);
+                                setShowViewDialog(true);
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => openEditDialog(mod)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setSelectedModerator(mod);
+                                setShowSuspendDialog(true);
+                              }}
+                            >
+                              <Ban className={`w-4 h-4 ${mod.is_suspended ? "text-green-500" : "text-yellow-500"}`} />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteModerator(mod)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Cards */}
+              <MobileCards>
+                {filteredModerators.map(mod => (
+                  <MobileCard key={mod.id}>
+                    <MobileCardHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                          <Shield className="w-5 h-5 text-primary" />
                         </div>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {new Date(mod.invited_at).toLocaleDateString()}
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {mod.first_name ? `${mod.first_name} ${mod.last_name || ""}` : "Pending Setup"}
+                          </p>
+                          <p className="text-sm text-muted-foreground">{mod.email}</p>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedModerator(mod);
-                              setShowViewDialog(true);
-                            }}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openEditDialog(mod)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => {
-                              setSelectedModerator(mod);
-                              setShowSuspendDialog(true);
-                            }}
-                          >
-                            <Ban className={`w-4 h-4 ${mod.is_suspended ? "text-green-500" : "text-yellow-500"}`} />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteModerator(mod)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      </div>
+                      {mod.is_suspended ? (
+                        <Badge variant="destructive" className="gap-1">
+                          <Ban className="w-3 h-3" /> Suspended
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="gap-1 border-green-600 text-green-500">
+                          <Check className="w-3 h-3" /> Active
+                        </Badge>
+                      )}
+                    </MobileCardHeader>
+                    
+                    <MobileCardRow label="Pages Access">
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {mod.pages.slice(0, 2).map(page => (
+                          <Badge key={page} variant="outline" className="text-xs">
+                            {page}
+                          </Badge>
+                        ))}
+                        {mod.pages.length > 2 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{mod.pages.length - 2}
+                          </Badge>
+                        )}
+                      </div>
+                    </MobileCardRow>
+                    <MobileCardRow label="Invited">
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        {new Date(mod.invited_at).toLocaleDateString()}
+                      </div>
+                    </MobileCardRow>
+                    
+                    <MobileCardActions>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedModerator(mod);
+                          setShowViewDialog(true);
+                        }}
+                      >
+                        <Eye className="w-4 h-4 mr-1" /> View
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditDialog(mod)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" /> Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={mod.is_suspended ? "text-green-500" : "text-yellow-500"}
+                        onClick={() => {
+                          setSelectedModerator(mod);
+                          setShowSuspendDialog(true);
+                        }}
+                      >
+                        <Ban className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive"
+                        onClick={() => handleDeleteModerator(mod)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </MobileCardActions>
+                  </MobileCard>
+                ))}
+              </MobileCards>
+            </>
           )}
         </CardContent>
       </Card>
@@ -547,7 +647,7 @@ export default function AdminModerators() {
             </div>
           ) : (
             <div className="space-y-4">
-              <ScrollArea className="max-h-[300px] pr-4">
+              <ScrollArea className="h-[300px] pr-4">
                 <div className="space-y-3">
                   {AVAILABLE_PAGES.map(page => (
                     <div
@@ -637,7 +737,7 @@ export default function AdminModerators() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <ScrollArea className="max-h-[300px] pr-4">
+            <ScrollArea className="h-[300px] pr-4">
               <div className="space-y-3">
                 {AVAILABLE_PAGES.map(page => (
                   <div

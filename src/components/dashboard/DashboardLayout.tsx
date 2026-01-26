@@ -173,7 +173,7 @@ export function DashboardLayout() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6 relative z-10">
+        <header className="sticky top-0 z-20 h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6">
           <div className="flex items-center gap-4">
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
               <Menu className="w-6 h-6" />
