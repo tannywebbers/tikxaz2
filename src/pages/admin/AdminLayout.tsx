@@ -170,7 +170,7 @@ export default function AdminLayout() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6">
+        <header className="sticky top-0 z-20 h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-6">
           {/* Mobile Menu */}
           <div className="lg:hidden">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

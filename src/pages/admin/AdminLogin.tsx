@@ -37,12 +37,12 @@ export default function AdminLogin() {
   const { user, isAdmin, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in as admin
+  // Only redirect if already logged in AND not in 2FA flow
   useEffect(() => {
-    if (!authLoading && user && isAdmin) {
+    if (!authLoading && user && isAdmin && !show2FA) {
       navigate("/baki/stage/admin");
     }
-  }, [user, isAdmin, authLoading, navigate]);
+  }, [user, isAdmin, authLoading, navigate, show2FA]);
 
   // Check lockout status
   const checkLockout = async (userId: string) => {

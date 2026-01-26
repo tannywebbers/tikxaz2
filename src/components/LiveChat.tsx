@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { MessageSquare, X, Send, Loader2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,10 @@ export function LiveChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const { toast } = useToast();
+  const location = useLocation();
+  
+  // Check if we're on admin routes - hide the floating chat for admins
+  const isAdminRoute = location.pathname.startsWith("/baki/stage/admin");
 
   // Listen for custom event to open chat
   useEffect(() => {
@@ -173,8 +178,9 @@ export function LiveChat() {
     }
   };
 
-  if (!user) {
-    return null; // Don't show chat for non-logged-in users
+  // Don't show chat for non-logged-in users or on admin panel
+  if (!user || isAdminRoute) {
+    return null;
   }
 
   return (

@@ -22,6 +22,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  MobileCards,
+  MobileCard,
+  MobileCardRow,
+  MobileCardHeader,
+  MobileCardActions,
+} from "@/components/ui/responsive-table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -202,7 +209,8 @@ export default function AdminSubmissions() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
@@ -262,6 +270,60 @@ export default function AdminSubmissions() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Mobile Cards */}
+        <MobileCards className="p-4">
+          {filteredSubmissions.map(sub => (
+            <MobileCard key={sub.id}>
+              <MobileCardHeader>
+                <div>
+                  <div className="font-medium text-foreground">
+                    {sub.profiles?.tiktok_name || `@${sub.profiles?.tiktok_username}`}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{sub.profiles?.email}</div>
+                </div>
+                {statusBadge(sub.status)}
+              </MobileCardHeader>
+              
+              <MobileCardRow label="Task Type">
+                {taskTypeBadge(sub.ads?.task_type || "unknown")}
+              </MobileCardRow>
+              <MobileCardRow label="AI Confidence">
+                <span className="text-muted-foreground">
+                  {sub.ai_analysis?.confidence ? `${sub.ai_analysis.confidence}%` : "-"}
+                </span>
+              </MobileCardRow>
+              <MobileCardRow label="Points">
+                <span className="text-foreground">{sub.points_awarded || "-"}</span>
+              </MobileCardRow>
+              <MobileCardRow label="Date">
+                <span className="text-muted-foreground">
+                  {new Date(sub.created_at).toLocaleDateString()}
+                </span>
+              </MobileCardRow>
+              
+              <MobileCardActions>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedSubmission(sub)}
+                >
+                  <Eye className="w-4 h-4 mr-1" /> Review
+                </Button>
+                {sub.status === "approved" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDeleteSubmission(sub)}
+                    className="text-destructive border-destructive/30"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" /> Delete
+                  </Button>
+                )}
+              </MobileCardActions>
+            </MobileCard>
+          ))}
+        </MobileCards>
       </div>
 
       <SubmissionReviewDialog

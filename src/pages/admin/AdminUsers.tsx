@@ -27,6 +27,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  MobileCards,
+  MobileCard,
+  MobileCardRow,
+  MobileCardHeader,
+  MobileCardActions,
+} from "@/components/ui/responsive-table";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -371,103 +378,199 @@ export default function AdminUsers() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-foreground">User</TableHead>
-              <TableHead className="text-foreground">TikTok</TableHead>
-              <TableHead className="text-foreground">Points</TableHead>
-              <TableHead className="text-foreground">Status</TableHead>
-              <TableHead className="text-foreground">Joined</TableHead>
-              <TableHead className="text-foreground text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredUsers.map(user => (
-              <TableRow key={user.id} className={`border-border hover:bg-muted/50 ${user.is_banned ? 'opacity-60' : ''}`}>
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm">
-                      {user.avatar_url && /\p{Emoji}/u.test(user.avatar_url) 
-                        ? user.avatar_url 
-                        : (user.first_name?.[0] || user.email[0]).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="font-medium text-foreground">{user.first_name} {user.last_name}</div>
-                      <div className="text-sm text-muted-foreground">{user.email}</div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">@{user.tiktok_username}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="gap-1">
-                    <Coins className="w-3 h-3" /> {user.tik_points}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  {user.is_banned ? (
-                    <Badge variant="destructive" className="gap-1">
-                      <XCircle className="w-3 h-3" /> Banned
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="gap-1 border-green-700 text-green-500">
-                      <CheckCircle className="w-3 h-3" /> Active
-                    </Badge>
-                  )}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {new Date(user.created_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {canCreditDebit && (
-                        <>
-                          <DropdownMenuItem 
-                            className="text-green-500 focus:text-green-500"
-                            onClick={() => setCreditDebitModal({ open: true, type: "credit", user })}
-                          >
-                            <Plus className="w-4 h-4 mr-2" /> Credit Points
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-orange-500 focus:text-orange-500"
-                            onClick={() => setCreditDebitModal({ open: true, type: "debit", user })}
-                          >
-                            <Minus className="w-4 h-4 mr-2" /> Debit Points
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                      <DropdownMenuItem 
-                        className="text-blue-500 focus:text-blue-500"
-                        onClick={() => setNotifyModal({ open: true, user })}
-                      >
-                        <Send className="w-4 h-4 mr-2" /> Send Notification
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-yellow-500 focus:text-yellow-500"
-                        onClick={() => setBanModal({ open: true, user })}
-                      >
-                        <Ban className="w-4 h-4 mr-2" /> {user.is_banned ? "Unban" : "Ban"} User
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-red-500 focus:text-red-500"
-                        onClick={() => setDeleteConfirm({ open: true, user })}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" /> Delete User
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
+        {/* Desktop Table */}
+        <div className="hidden md:block overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border hover:bg-transparent">
+                <TableHead className="text-foreground">User</TableHead>
+                <TableHead className="text-foreground">TikTok</TableHead>
+                <TableHead className="text-foreground">Points</TableHead>
+                <TableHead className="text-foreground">Status</TableHead>
+                <TableHead className="text-foreground">Joined</TableHead>
+                <TableHead className="text-foreground text-right">Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map(user => (
+                <TableRow key={user.id} className={`border-border hover:bg-muted/50 ${user.is_banned ? 'opacity-60' : ''}`}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm">
+                        {user.avatar_url && /\p{Emoji}/u.test(user.avatar_url) 
+                          ? user.avatar_url 
+                          : (user.first_name?.[0] || user.email[0]).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-medium text-foreground">{user.first_name} {user.last_name}</div>
+                        <div className="text-sm text-muted-foreground">{user.email}</div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">@{user.tiktok_username}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="gap-1">
+                      <Coins className="w-3 h-3" /> {user.tik_points}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {user.is_banned ? (
+                      <Badge variant="destructive" className="gap-1">
+                        <XCircle className="w-3 h-3" /> Banned
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="gap-1 border-green-700 text-green-500">
+                        <CheckCircle className="w-3 h-3" /> Active
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {new Date(user.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-popover border-border">
+                        {canCreditDebit && (
+                          <>
+                            <DropdownMenuItem 
+                              className="text-green-500 focus:text-green-500"
+                              onClick={() => setCreditDebitModal({ open: true, type: "credit", user })}
+                            >
+                              <Plus className="w-4 h-4 mr-2" /> Credit Points
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-orange-500 focus:text-orange-500"
+                              onClick={() => setCreditDebitModal({ open: true, type: "debit", user })}
+                            >
+                              <Minus className="w-4 h-4 mr-2" /> Debit Points
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        <DropdownMenuItem 
+                          className="text-blue-500 focus:text-blue-500"
+                          onClick={() => setNotifyModal({ open: true, user })}
+                        >
+                          <Send className="w-4 h-4 mr-2" /> Send Notification
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-yellow-500 focus:text-yellow-500"
+                          onClick={() => setBanModal({ open: true, user })}
+                        >
+                          <Ban className="w-4 h-4 mr-2" /> {user.is_banned ? "Unban" : "Ban"} User
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          className="text-red-500 focus:text-red-500"
+                          onClick={() => setDeleteConfirm({ open: true, user })}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" /> Delete User
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Mobile Cards */}
+        <MobileCards className="p-4">
+          {filteredUsers.map(user => (
+            <MobileCard key={user.id} className={user.is_banned ? 'opacity-60' : ''}>
+              <MobileCardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white">
+                    {user.avatar_url && /\p{Emoji}/u.test(user.avatar_url) 
+                      ? user.avatar_url 
+                      : (user.first_name?.[0] || user.email[0]).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">{user.first_name} {user.last_name}</div>
+                    <div className="text-sm text-muted-foreground">{user.email}</div>
+                  </div>
+                </div>
+                {user.is_banned ? (
+                  <Badge variant="destructive" className="gap-1">
+                    <XCircle className="w-3 h-3" /> Banned
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 border-green-700 text-green-500">
+                    <CheckCircle className="w-3 h-3" /> Active
+                  </Badge>
+                )}
+              </MobileCardHeader>
+              
+              <MobileCardRow label="TikTok">
+                <span className="text-muted-foreground">@{user.tiktok_username}</span>
+              </MobileCardRow>
+              <MobileCardRow label="Points">
+                <Badge variant="outline" className="gap-1">
+                  <Coins className="w-3 h-3" /> {user.tik_points}
+                </Badge>
+              </MobileCardRow>
+              <MobileCardRow label="Joined">
+                <span className="text-muted-foreground">{new Date(user.created_at).toLocaleDateString()}</span>
+              </MobileCardRow>
+              
+              <MobileCardActions>
+                {canCreditDebit && (
+                  <>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-green-500 border-green-500/30"
+                      onClick={() => setCreditDebitModal({ open: true, type: "credit", user })}
+                    >
+                      <Plus className="w-4 h-4 mr-1" /> Credit
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      className="text-orange-500 border-orange-500/30"
+                      onClick={() => setCreditDebitModal({ open: true, type: "debit", user })}
+                    >
+                      <Minus className="w-4 h-4 mr-1" /> Debit
+                    </Button>
+                  </>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreHorizontal className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-popover border-border">
+                    <DropdownMenuItem 
+                      className="text-blue-500 focus:text-blue-500"
+                      onClick={() => setNotifyModal({ open: true, user })}
+                    >
+                      <Send className="w-4 h-4 mr-2" /> Send Notification
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-yellow-500 focus:text-yellow-500"
+                      onClick={() => setBanModal({ open: true, user })}
+                    >
+                      <Ban className="w-4 h-4 mr-2" /> {user.is_banned ? "Unban" : "Ban"} User
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      className="text-red-500 focus:text-red-500"
+                      onClick={() => setDeleteConfirm({ open: true, user })}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" /> Delete User
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </MobileCardActions>
+            </MobileCard>
+          ))}
+        </MobileCards>
       </div>
 
       {/* Credit/Debit Modal */}
