@@ -95,32 +95,55 @@ export default function AdminLayout() {
   const { user, isAdmin, userRole, isLoading } = useAuth();
   const { hasPageAccess, canAccessRoute, isLoading: permissionsLoading } = useModeratorPermissions();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isVerified, setIsVerified] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // Check authentication and 2FA status
   useEffect(() => {
-    if (!isLoading && (!user || !isAdmin)) {
-      navigate("/baki/stage/admin/login");
-    }
+    const verifyAuth = async () => {
+      if (isLoading) return;
+
+      // Check if user is not authenticated
+      if (!user || !isAdmin) {
+        navigate("/baki/stage/admin/login");
+        return;
+      }
+
+      // Check if there's a pending 2FA (shouldn't be here if pending)
+      const pending2FA = sessionStorage.getItem("admin_2fa_pending");
+      if (pending2FA) {
+        navigate("/baki/stage/admin/verify-2fa");
+        return;
+      }
+
+      // User is authenticated and no pending 2FA
+      setIsVerified(true);
+      setCheckingAuth(false);
+    };
+
+    verifyAuth();
   }, [user, isAdmin, isLoading, navigate]);
 
   // Check route access for moderators
   useEffect(() => {
-    if (!isLoading && !permissionsLoading && user && isAdmin && userRole === 'moderator') {
+    if (!isLoading && !permissionsLoading && user && isAdmin && userRole === 'moderator' && isVerified) {
       if (!canAccessRoute(location.pathname)) {
         // Redirect to dashboard if no access
         navigate("/baki/stage/admin");
       }
     }
-  }, [location.pathname, isLoading, permissionsLoading, user, isAdmin, userRole, canAccessRoute, navigate]);
+  }, [location.pathname, isLoading, permissionsLoading, user, isAdmin, userRole, canAccessRoute, navigate, isVerified]);
 
   const handleSignOut = async () => {
-    const { signOut } = await import("@/hooks/use-auth").then(m => ({ signOut: m.useAuth }));
-    // Direct signout
+    // Clear any pending 2FA state
+    sessionStorage.removeItem("admin_2fa_pending");
+    
     const { supabase } = await import("@/integrations/supabase/client");
     await supabase.auth.signOut();
     navigate("/baki/stage/admin/login");
   };
 
-  if (isLoading || permissionsLoading) {
+  if (isLoading || permissionsLoading || checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -128,7 +151,7 @@ export default function AdminLayout() {
     );
   }
 
-  if (!user || !isAdmin) {
+  if (!user || !isAdmin || !isVerified) {
     return null;
   }
 
