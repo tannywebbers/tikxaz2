@@ -15,7 +15,8 @@ import {
   Menu,
   Palette,
   Eye,
-  KeyRound
+  KeyRound,
+  Gift
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -38,6 +39,7 @@ const allNavItems = [
   { icon: Palette, label: "App Settings", href: "/baki/stage/admin/app-settings", pageKey: "app-settings" },
   { icon: Mail, label: "Email Config", href: "/baki/stage/admin/email", pageKey: "email" },
   { icon: Megaphone, label: "Ads Settings", href: "/baki/stage/admin/ads", pageKey: "ads" },
+  { icon: Gift, label: "Bonus & Referrals", href: "/baki/stage/admin/bonus", pageKey: "bonus" },
   { icon: KeyRound, label: "2FA Settings", href: "/baki/stage/admin/2fa", pageKey: "2fa", alwaysShow: true },
   { icon: Settings, label: "Settings", href: "/baki/stage/admin/settings", pageKey: "settings", alwaysShow: true },
 ];

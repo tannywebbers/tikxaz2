@@ -43,6 +43,7 @@ import AdminLiveChats from "./pages/admin/AdminLiveChats";
 import AdminModerators from "./pages/admin/AdminModerators";
 import Admin2FASettings from "./pages/admin/Admin2FASettings";
 import AdminVerify2FA from "./pages/admin/AdminVerify2FA";
+import AdminBonusSettings from "./pages/admin/AdminBonusSettings";
 
 const queryClient = new QueryClient();
 
@@ -99,6 +100,7 @@ const App = () => (
                 <Route path="app-settings" element={<AdminAppSettings />} />
                 <Route path="email" element={<AdminEmailConfig />} />
                 <Route path="ads" element={<AdminAdsSettings />} />
+                <Route path="bonus" element={<AdminBonusSettings />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

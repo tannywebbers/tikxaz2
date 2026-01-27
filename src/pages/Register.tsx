@@ -13,7 +13,8 @@ import {
   Loader2,
   User,
   MapPin,
-  ShieldCheck
+  ShieldCheck,
+  Gift
 } from "lucide-react";
 import { getCountryFromIP } from "@/hooks/use-geolocation";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export default function Register() {
     tiktokName: "",
     tiktokUsername: "",
     password: "",
+    referralCode: "",
     terms: false,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -62,10 +64,20 @@ export default function Register() {
   const [generatedOTP, setGeneratedOTP] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
+  const [referralEnabled, setReferralEnabled] = useState(false);
   
   const { signUp } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Get referral code from URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    if (ref) {
+      setFormData(prev => ({ ...prev, referralCode: ref.toUpperCase() }));
+    }
+  }, []);
 
   // Fetch settings on mount
   useEffect(() => {
@@ -105,6 +117,18 @@ export default function Register() {
 
       if (domains && domains.length > 0) {
         setAllowedDomains(domains.map(d => d.domain));
+      }
+
+      // Check if referral is enabled
+      const { data: bonusSettings } = await supabase
+        .from("platform_settings")
+        .select("value")
+        .eq("key", "bonus_settings")
+        .maybeSingle();
+
+      if (bonusSettings?.value) {
+        const bonus = bonusSettings.value as { referral_enabled?: boolean };
+        setReferralEnabled(bonus.referral_enabled ?? false);
       }
     };
 
@@ -227,6 +251,7 @@ export default function Register() {
       tiktok_username: formData.tiktokUsername,
       tiktok_name: formData.tiktokName,
       country: detectedCountry,
+      referral_code: formData.referralCode || undefined,
     });
     setIsLoading(false);
 
@@ -255,6 +280,7 @@ export default function Register() {
       tiktok_username: formData.tiktokUsername,
       tiktok_name: formData.tiktokName,
       country: detectedCountry,
+      referral_code: formData.referralCode || undefined,
     });
     setIsVerifying(false);
 
@@ -427,6 +453,26 @@ export default function Register() {
                   </div>
                   {errors.tiktokUsername && <p className="text-sm text-destructive">{errors.tiktokUsername}</p>}
                 </div>
+
+                {/* Referral Code - Optional */}
+                {referralEnabled && (
+                  <div className="space-y-2">
+                    <Label htmlFor="referralCode" className="flex items-center gap-2">
+                      <Gift className="w-4 h-4" />
+                      Referral Code (Optional)
+                    </Label>
+                    <Input 
+                      id="referralCode" 
+                      placeholder="Enter referral code"
+                      value={formData.referralCode}
+                      onChange={(e) => handleChange("referralCode", e.target.value.toUpperCase())}
+                      maxLength={8}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Have a friend's referral code? Enter it to help them earn rewards!
+                    </p>
+                  </div>
+                )}
 
                 {/* Country Detection - Auto */}
                 <div className="space-y-2">

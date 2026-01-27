@@ -26,7 +26,7 @@ interface AuthContextType {
   isModerator: boolean;
   userRole: 'admin' | 'moderator' | 'user' | null;
   isLoading: boolean;
-  signUp: (email: string, password: string, metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string; country?: string | null }) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string; country?: string | null; referral_code?: string }) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -143,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (
     email: string, 
     password: string, 
-    metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string; country?: string | null }
+    metadata: { first_name: string; last_name: string; tiktok_username: string; tiktok_name?: string; country?: string | null; referral_code?: string }
   ) => {
     const redirectUrl = `${window.location.origin}/`;
     

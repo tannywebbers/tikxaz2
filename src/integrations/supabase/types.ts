@@ -691,6 +691,8 @@ export type Database = {
           id: string
           is_banned: boolean | null
           last_name: string | null
+          referral_code: string | null
+          referred_by: string | null
           tik_points: number
           tiktok_name: string | null
           tiktok_username: string
@@ -709,6 +711,8 @@ export type Database = {
           id?: string
           is_banned?: boolean | null
           last_name?: string | null
+          referral_code?: string | null
+          referred_by?: string | null
           tik_points?: number
           tiktok_name?: string | null
           tiktok_username: string
@@ -727,13 +731,114 @@ export type Database = {
           id?: string
           is_banned?: boolean | null
           last_name?: string | null
+          referral_code?: string | null
+          referred_by?: string | null
           tik_points?: number
           tiktok_name?: string | null
           tiktok_username?: string
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_referred_by_fkey"
+            columns: ["referred_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referral_commissions: {
+        Row: {
+          commission_percentage: number
+          commission_points: number
+          created_at: string
+          id: string
+          purchase_amount: number
+          referred_id: string
+          referrer_id: string
+          transaction_id: string
+        }
+        Insert: {
+          commission_percentage: number
+          commission_points: number
+          created_at?: string
+          id?: string
+          purchase_amount: number
+          referred_id: string
+          referrer_id: string
+          transaction_id: string
+        }
+        Update: {
+          commission_percentage?: number
+          commission_points?: number
+          created_at?: string
+          id?: string
+          purchase_amount?: number
+          referred_id?: string
+          referrer_id?: string
+          transaction_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referral_commissions_referred_id_fkey"
+            columns: ["referred_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_commissions_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_commissions_transaction_id_fkey"
+            columns: ["transaction_id"]
+            isOneToOne: true
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      referrals: {
+        Row: {
+          created_at: string
+          id: string
+          referred_id: string
+          referrer_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          referred_id: string
+          referrer_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          referred_id?: string
+          referrer_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "referrals_referred_id_fkey"
+            columns: ["referred_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referrals_referrer_id_fkey"
+            columns: ["referrer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       smtp_config: {
         Row: {
