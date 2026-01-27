@@ -4,10 +4,34 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
 };
 
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_HOURS = 6;
+
+// Rate limiting for 2FA verification
+const verifyRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes
+const MAX_VERIFY_ATTEMPTS = 10;
+
+function checkVerifyRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = verifyRateLimitMap.get(userId);
+  
+  if (!entry || now > entry.resetAt) {
+    verifyRateLimitMap.set(userId, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  
+  if (entry.count >= MAX_VERIFY_ATTEMPTS) {
+    return false;
+  }
+  
+  entry.count++;
+  return true;
+}
 
 // RFC 4648 Base32 decoding
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -100,10 +124,60 @@ serve(async (req) => {
 
     const { user_id, code, action } = await req.json();
 
+    // Handle lockout check
+    if (action === "check_lockout") {
+      if (!user_id) {
+        return new Response(
+          JSON.stringify({ error: "User ID required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: totpData } = await supabase
+        .from("admin_totp_secrets")
+        .select("locked_until, failed_attempts")
+        .eq("user_id", user_id)
+        .maybeSingle();
+
+      if (totpData?.locked_until) {
+        const lockedUntil = new Date(totpData.locked_until);
+        if (lockedUntil > new Date()) {
+          return new Response(
+            JSON.stringify({ 
+              locked: true, 
+              locked_until: totpData.locked_until,
+              failed_attempts: totpData.failed_attempts
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          locked: false, 
+          failed_attempts: totpData?.failed_attempts || 0
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!user_id || !code) {
       return new Response(
         JSON.stringify({ error: "User ID and code are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Rate limit check
+    if (!checkVerifyRateLimit(user_id)) {
+      return new Response(
+        JSON.stringify({ 
+          error: "Too many verification attempts. Please wait.", 
+          success: false,
+          rateLimited: true
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -116,7 +190,7 @@ serve(async (req) => {
 
     if (fetchError || !totpData) {
       return new Response(
-        JSON.stringify({ error: "TOTP not set up for this user" }),
+        JSON.stringify({ error: "TOTP not set up for this user", success: false }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -193,6 +267,15 @@ serve(async (req) => {
           .update({ failed_attempts: newFailedAttempts, locked_until: lockUntil.toISOString() })
           .eq("user_id", user_id);
 
+        // Log the lockout
+        await supabase.from("admin_login_attempts").insert({
+          email: "unknown",
+          user_id: user_id,
+          is_successful: false,
+          attempt_type: "2fa_lockout",
+          ip_address: req.headers.get("x-forwarded-for") || "unknown",
+        });
+
         return new Response(
           JSON.stringify({ 
             error: "Account locked due to too many failed attempts", 
@@ -209,6 +292,15 @@ serve(async (req) => {
         .from("admin_totp_secrets")
         .update({ failed_attempts: newFailedAttempts })
         .eq("user_id", user_id);
+
+      // Log failed 2FA attempt
+      await supabase.from("admin_login_attempts").insert({
+        email: "unknown",
+        user_id: user_id,
+        is_successful: false,
+        attempt_type: "2fa_failed",
+        ip_address: req.headers.get("x-forwarded-for") || "unknown",
+      });
 
       return new Response(
         JSON.stringify({ 
@@ -255,7 +347,7 @@ serve(async (req) => {
     console.error("Error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ error: message, success: false }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -42,6 +42,7 @@ import AdminAppSettings from "./pages/admin/AdminAppSettings";
 import AdminLiveChats from "./pages/admin/AdminLiveChats";
 import AdminModerators from "./pages/admin/AdminModerators";
 import Admin2FASettings from "./pages/admin/Admin2FASettings";
+import AdminVerify2FA from "./pages/admin/AdminVerify2FA";
 
 const queryClient = new QueryClient();
 
@@ -82,6 +83,7 @@ const App = () => (
 
               {/* Hidden admin routes - completely isolated */}
               <Route path="/baki/stage/admin/login" element={<AdminLogin />} />
+              <Route path="/baki/stage/admin/verify-2fa" element={<AdminVerify2FA />} />
               <Route path="/baki/stage/admin" element={<AdminLayout />}>
                 <Route index element={<AdminDashboard />} />
                 <Route path="submissions" element={<AdminSubmissions />} />
