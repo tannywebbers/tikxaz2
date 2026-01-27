@@ -14,7 +14,11 @@ import {
   Layers,
   Loader2,
   Edit3,
-  Clock
+  Clock,
+  Gift,
+  Copy,
+  Check,
+  Users
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +36,9 @@ export function ProfilePage() {
   const [isEditingDisplayName, setIsEditingDisplayName] = useState(false);
   const [newDisplayName, setNewDisplayName] = useState("");
   const [displayNameChangedAt, setDisplayNameChangedAt] = useState<Date | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralStats, setReferralStats] = useState({ count: 0, earned: 0 });
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -60,7 +67,52 @@ export function ProfilePage() {
     }
     fetchStats();
     fetchDisplayNameChangedAt();
+    fetchReferralData();
   }, [profile]);
+
+  const fetchReferralData = async () => {
+    if (!user) return;
+    
+    // Get user's referral code
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("referral_code, id")
+      .eq("user_id", user.id)
+      .single();
+    
+    if (profileData?.referral_code) {
+      setReferralCode(profileData.referral_code);
+      
+      // Get referral count
+      const { count } = await supabase
+        .from("referrals")
+        .select("*", { count: "exact", head: true })
+        .eq("referrer_id", profileData.id);
+      
+      // Get total commission earned
+      const { data: commissions } = await supabase
+        .from("referral_commissions")
+        .select("commission_points")
+        .eq("referrer_id", profileData.id);
+      
+      const totalEarned = commissions?.reduce((sum, c) => sum + (c.commission_points || 0), 0) || 0;
+      
+      setReferralStats({
+        count: count || 0,
+        earned: totalEarned,
+      });
+    }
+  };
+
+  const copyReferralLink = () => {
+    if (referralCode) {
+      const link = `${window.location.origin}/register?ref=${referralCode}`;
+      navigator.clipboard.writeText(link);
+      setCopied(true);
+      toast({ title: "Copied!", description: "Referral link copied to clipboard." });
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const fetchDisplayNameChangedAt = async () => {
     if (!user) return;
@@ -359,6 +411,63 @@ export function ProfilePage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Referral Program Card */}
+      {referralCode && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.08 }}
+        >
+          <Card className="border-primary/30 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-primary">
+                <Gift className="w-5 h-5" />
+                Referral Program
+              </CardTitle>
+              <CardDescription>
+                Invite friends and earn commission from their purchases!
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 rounded-xl bg-background/50 border border-border">
+                  <div className="text-2xl font-bold text-primary">{referralStats.count}</div>
+                  <div className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                    <Users className="w-3 h-3" />
+                    Referrals
+                  </div>
+                </div>
+                <div className="text-center p-4 rounded-xl bg-background/50 border border-border">
+                  <div className="text-2xl font-bold text-primary">{referralStats.earned}</div>
+                  <div className="text-xs text-muted-foreground">Points Earned</div>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Your Referral Code</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    value={referralCode} 
+                    readOnly 
+                    className="font-mono text-lg tracking-widest bg-muted"
+                  />
+                  <Button variant="outline" size="icon" onClick={copyReferralLink}>
+                    {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                <p className="text-xs text-muted-foreground">
+                  Share your referral link with friends. When they sign up and purchase points, 
+                  you'll earn a percentage of their purchase as commission!
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Supported Task Types */}
       <motion.div
