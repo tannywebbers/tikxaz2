@@ -1,15 +1,18 @@
+import { Request, Response } from "node-fetch"; // For Node.js types if needed
+import crypto from "crypto"; // Node.js crypto
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 interface SMTPConfig {
-  host: string;
-  port: number;
-  username: string;
-  password: string; // This is the Brevo API key
+  host?: string;
+  port?: number;
+  username?: string;
+  password: string; // Brevo API Key
   from_email: string;
-  from_name: string;
+  from_name?: string;
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -18,11 +21,12 @@ export async function handler(req: Request): Promise<Response> {
   }
 
   try {
-    const { to, smtpConfig } = await req.json() as {
+    const { to, smtpConfig } = (await req.json()) as {
       to: string;
       smtpConfig: SMTPConfig;
     };
 
+    // Validate recipient
     if (!to) {
       return new Response(
         JSON.stringify({ error: "Email address is required" }),
@@ -30,7 +34,6 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(to)) {
       return new Response(
@@ -39,11 +42,11 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    // Validate config - for Brevo HTTP API we need the API key (password field)
+    // Validate Brevo API key & sender
     if (!smtpConfig?.password || !smtpConfig?.from_email) {
       return new Response(
         JSON.stringify({
-          error: "Incomplete configuration. Please provide Brevo API Key and From Email.",
+          error: "Incomplete configuration. Provide Brevo API Key and From Email.",
           details: {
             api_key: !!smtpConfig?.password,
             from_email: !!smtpConfig?.from_email
@@ -53,7 +56,7 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    console.log(`Sending email via Brevo HTTP API to: ${to}`);
+    console.log(`Sending test email via Brevo to: ${to}`);
 
     // Build HTML content
     const htmlContent = `
@@ -85,8 +88,7 @@ export async function handler(req: Request): Promise<Response> {
           <div class="content">
             <div class="success-icon">✅</div>
             <p class="success-text">Email Configuration Working!</p>
-            <p>Great news! Your email configuration is set up correctly. You can now send emails from your application.</p>
-            
+            <p>Your email setup is correct. You can now send emails from your app.</p>
             <div class="details">
               <h3 style="margin-top: 0;">Test Details:</h3>
               <ul>
@@ -96,14 +98,6 @@ export async function handler(req: Request): Promise<Response> {
                 <li><strong>Method:</strong> HTTP API v3</li>
               </ul>
             </div>
-            
-            <p>You can now use email features in your application like:</p>
-            <ul>
-              <li>✉️ Email verification for new users</li>
-              <li>🔐 Password reset emails</li>
-              <li>🔔 Notification emails</li>
-              <li>📢 Marketing campaigns</li>
-            </ul>
           </div>
           <div class="footer">
             <p>© ${new Date().getFullYear()} ${smtpConfig.from_name || 'TikPoints'}. All rights reserved.</p>
@@ -114,8 +108,7 @@ export async function handler(req: Request): Promise<Response> {
       </html>
     `;
 
-    // Use Brevo's HTTP API v3 for sending transactional emails
-    // The SMTP key/password is used as the API key
+    // Send via Brevo HTTP API
     const brevoResponse = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
@@ -128,64 +121,43 @@ export async function handler(req: Request): Promise<Response> {
           name: smtpConfig.from_name || "TikPoints",
           email: smtpConfig.from_email,
         },
-        to: [
-          {
-            email: to,
-            name: to.split("@")[0],
-          },
-        ],
+        to: [{ email: to, name: to.split("@")[0] }],
         subject: `${smtpConfig.from_name || 'TikPoints'} - Test Email`,
-        htmlContent: htmlContent,
-        textContent: `Your ${smtpConfig.from_name || 'TikPoints'} email configuration is working correctly! Sent to: ${to} at ${new Date().toISOString()}`,
+        htmlContent,
+        textContent: `Test email sent successfully to ${to} via Brevo API.`,
       }),
     });
 
     const brevoData = await brevoResponse.json();
-    
-    console.log("Brevo API response status:", brevoResponse.status);
-    console.log("Brevo API response:", JSON.stringify(brevoData));
 
     if (!brevoResponse.ok) {
-      console.error("Brevo API error:", brevoData);
-      
-      // Parse common Brevo errors
-      let errorMessage = "Failed to send email via Brevo";
-      if (brevoData.code === "unauthorized" || brevoData.code === "invalid_api_key") {
-        errorMessage = "Invalid Brevo API Key. Please check your SMTP key in Brevo dashboard.";
-      } else if (brevoData.message?.includes("sender")) {
-        errorMessage = "Sender email not verified. Please verify your domain in Brevo dashboard.";
-      } else if (brevoData.message) {
-        errorMessage = brevoData.message;
-      }
-      
+      let errorMessage = brevoData.message || "Failed to send test email";
       return new Response(
         JSON.stringify({
           error: errorMessage,
           code: brevoData.code,
-          details: "Go to Brevo Dashboard → Settings → Senders & IP to verify your sender email."
+          details: "Check Brevo Dashboard → Settings → Senders & API Key."
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("Email sent successfully via Brevo HTTP API");
-
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         message: `Test email sent successfully to ${to}`,
         messageId: brevoData.messageId,
-        provider: "Brevo HTTP API"
+        provider: "Brevo HTTP API",
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {
-    console.error("Request error:", error);
+    console.error("Email test error:", error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error instanceof Error ? error.message : "Failed to send test email",
-        details: "Please verify your Brevo API key is correct."
+        details: "Verify Brevo API key and sender email."
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
