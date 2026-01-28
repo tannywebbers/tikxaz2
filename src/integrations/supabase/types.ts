@@ -261,6 +261,7 @@ export type Database = {
           points_name: string | null
           points_short_name: string | null
           primary_color: string | null
+          pwa_icon_url: string | null
           social_links: Json | null
           support_email: string | null
           updated_at: string
@@ -283,6 +284,7 @@ export type Database = {
           points_name?: string | null
           points_short_name?: string | null
           primary_color?: string | null
+          pwa_icon_url?: string | null
           social_links?: Json | null
           support_email?: string | null
           updated_at?: string
@@ -305,6 +307,7 @@ export type Database = {
           points_name?: string | null
           points_short_name?: string | null
           primary_color?: string | null
+          pwa_icon_url?: string | null
           social_links?: Json | null
           support_email?: string | null
           updated_at?: string

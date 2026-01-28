@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/hooks/use-theme";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LiveChat } from "@/components/LiveChat";
+import { PwaManifestUpdater } from "@/components/PwaManifestUpdater";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -69,9 +70,9 @@ const App = () => (
               <Route path="/faqs" element={<FAQs />} />
               <Route path="/contact" element={<ContactUs />} />
               
-              {/* User dashboard routes */}
+              {/* User dashboard routes - admins are blocked, must use admin panel */}
               <Route path="/dashboard" element={
-                <ProtectedRoute>
+                <ProtectedRoute blockAdmins>
                   <DashboardLayout />
                 </ProtectedRoute>
               }>
@@ -110,6 +111,9 @@ const App = () => (
             
             {/* Global Live Chat */}
             <LiveChat />
+            
+            {/* Dynamic PWA Manifest from admin settings */}
+            <PwaManifestUpdater />
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

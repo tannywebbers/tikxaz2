@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Settings, 
   Save, 
@@ -11,7 +11,8 @@ import {
   Hash,
   Share2,
   MessageCircle,
-  Mail
+  Mail,
+  Upload
 } from "lucide-react";
 import { 
   FaFacebook, 
@@ -45,6 +46,7 @@ interface AppSettings {
   meta_description: string;
   logo_url: string;
   favicon_url: string;
+  pwa_icon_url: string;
   primary_color: string;
   accent_color: string;
   platform_name: string;
@@ -65,6 +67,7 @@ const defaultSettings: AppSettings = {
   meta_description: "The leading platform for TikTok engagement exchange. Earn and advertise smarter.",
   logo_url: "",
   favicon_url: "",
+  pwa_icon_url: "",
   primary_color: "#ec4899",
   accent_color: "#06b6d4",
   platform_name: "TikTok",
@@ -88,6 +91,8 @@ export default function AdminAppSettings() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingPwa, setIsUploadingPwa] = useState(false);
+  const pwaFileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -167,6 +172,49 @@ export default function AdminAppSettings() {
       ...prev,
       social_links: { ...prev.social_links, [platform]: value },
     }));
+  };
+
+  const handlePwaIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({ variant: "destructive", title: "Invalid file", description: "Please upload an image file (PNG recommended, 512x512px)" });
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "File too large", description: "Please upload an image smaller than 2MB" });
+      return;
+    }
+
+    setIsUploadingPwa(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `pwa-icon-${Date.now()}.${fileExt}`;
+      const filePath = `icons/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('app-assets')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('app-assets')
+        .getPublicUrl(filePath);
+
+      setSettings(prev => ({ ...prev, pwa_icon_url: publicUrl }));
+      toast({ title: "Uploaded", description: "PWA icon uploaded successfully. Click 'Save All' to apply." });
+    } catch (error) {
+      console.error("Error uploading PWA icon:", error);
+      toast({ variant: "destructive", title: "Upload failed", description: "Failed to upload PWA icon" });
+    } finally {
+      setIsUploadingPwa(false);
+      if (pwaFileInputRef.current) pwaFileInputRef.current.value = '';
+    }
   };
 
   if (isLoading) {
@@ -332,6 +380,70 @@ export default function AdminAppSettings() {
                       className="flex-1"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* PWA Icon Upload Section */}
+              <div className="border-t pt-4 mt-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Smartphone className="w-4 h-4" />
+                    PWA App Icon (for mobile installations)
+                  </Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Upload a square PNG image (512x512px recommended) that will be used when users install the app on their mobile devices.
+                  </p>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="file"
+                      ref={pwaFileInputRef}
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handlePwaIconUpload}
+                      className="hidden"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => pwaFileInputRef.current?.click()}
+                      disabled={isUploadingPwa}
+                    >
+                      {isUploadingPwa ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <Upload className="w-4 h-4 mr-2" />
+                      )}
+                      Upload PWA Icon
+                    </Button>
+                    {settings.pwa_icon_url && (
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-lg border bg-muted flex items-center justify-center overflow-hidden">
+                          <img 
+                            src={settings.pwa_icon_url} 
+                            alt="PWA Icon preview" 
+                            className="w-full h-full object-contain"
+                            onError={(e) => (e.currentTarget.style.display = 'none')}
+                          />
+                        </div>
+                        <span className="text-sm text-green-600">✓ Icon uploaded</span>
+                      </div>
+                    )}
+                  </div>
+                  {settings.pwa_icon_url && (
+                    <Input
+                      value={settings.pwa_icon_url}
+                      onChange={(e) => updateField("pwa_icon_url", e.target.value)}
+                      placeholder="Or paste URL directly"
+                      className="mt-2"
+                    />
+                  )}
+                  {!settings.pwa_icon_url && (
+                    <Input
+                      value={settings.pwa_icon_url}
+                      onChange={(e) => updateField("pwa_icon_url", e.target.value)}
+                      placeholder="Or paste icon URL directly"
+                      className="mt-2"
+                    />
+                  )}
                 </div>
               </div>
             </CardContent>
