@@ -12,7 +12,7 @@ export async function handler(req: Request): Promise<Response> {
     const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
     const APP_URL = process.env.APP_URL || "https://tikswap.online";
     const SUPABASE_URL = process.env.SUPABASE_URL;
-    
+
     if (!PAYSTACK_SECRET_KEY) {
       console.error("PAYSTACK_SECRET_KEY not configured");
       return new Response(
@@ -23,8 +23,6 @@ export async function handler(req: Request): Promise<Response> {
 
     const { email, amount, points, userId } = await req.json();
 
-    console.log("Initializing payment:", { email, amount, points, userId });
-
     if (!email || !amount || !points || !userId) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
@@ -32,10 +30,8 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    // Use the callback URL for redirect after payment
+    // Construct callback URL
     const callbackUrl = `${SUPABASE_URL}/functions/v1/paystack-verify`;
-
-    console.log("Callback URL:", callbackUrl);
 
     // Initialize Paystack transaction
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -64,8 +60,6 @@ export async function handler(req: Request): Promise<Response> {
 
     const paystackData = await paystackResponse.json();
 
-    console.log("Paystack response:", paystackData);
-
     if (!paystackData.status) {
       console.error("Paystack error:", paystackData);
       return new Response(
@@ -82,10 +76,11 @@ export async function handler(req: Request): Promise<Response> {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+
+  } catch (error: any) {
     console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: error.message || "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
