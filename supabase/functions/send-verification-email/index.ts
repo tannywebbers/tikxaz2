@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import crypto from "crypto"; // Node.js-compatible
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +8,7 @@ const corsHeaders = {
 
 interface VerificationRequest {
   email: string;
-  type: 'code' | 'link';
+  type?: 'code' | 'link';
 }
 
 export async function handler(req: Request): Promise<Response> {
@@ -204,6 +205,7 @@ export async function handler(req: Request): Promise<Response> {
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
+
   } catch (error: unknown) {
     console.error("Error in send-verification-email:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
