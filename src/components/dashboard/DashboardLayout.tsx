@@ -10,7 +10,8 @@ import {
   BarChart3,
   LogOut,
   Menu,
-  X
+  X,
+  Gift
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,7 @@ const navItems = [
   { icon: Wallet, label: "Wallet", href: "/dashboard/wallet" },
   { icon: PlusCircle, label: "Create Ad", href: "/dashboard/create-ad" },
   { icon: BarChart3, label: "My Ads", href: "/dashboard/my-ads" },
+  { icon: Gift, label: "Referrals", href: "/dashboard/referrals" },
   { icon: User, label: "Profile", href: "/dashboard/profile" },
 ];
 

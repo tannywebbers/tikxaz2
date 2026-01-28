@@ -16,6 +16,7 @@ import Profile from "./pages/Profile";
 import CreateAd from "./pages/CreateAd";
 import TaskBrowser from "./pages/TaskBrowser";
 import MyAds from "./pages/MyAds";
+import Referrals from "./pages/Referrals";
 import NotFound from "./pages/NotFound";
 
 // Legal & Info pages
@@ -80,6 +81,7 @@ const App = () => (
                 <Route path="create-ad" element={<CreateAd />} />
                 <Route path="tasks" element={<TaskBrowser />} />
                 <Route path="my-ads" element={<MyAds />} />
+                <Route path="referrals" element={<Referrals />} />
               </Route>
 
               {/* Hidden admin routes - completely isolated */}
