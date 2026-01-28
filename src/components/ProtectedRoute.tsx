@@ -5,9 +5,10 @@ import { Loader2 } from "lucide-react";
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  blockAdmins?: boolean;
 }
 
-export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, blockAdmins = false }: ProtectedRouteProps) {
   const { user, isAdmin, isLoading } = useAuth();
   const location = useLocation();
 
@@ -24,6 +25,11 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Block admins from accessing user panel - they must use admin panel
+  if (blockAdmins && isAdmin) {
+    return <Navigate to="/baki/stage/admin" replace />;
   }
 
   if (requireAdmin && !isAdmin) {
