@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
@@ -11,15 +10,15 @@ interface VerificationRequest {
   type: 'code' | 'link';
 }
 
-serve(async (req: Request) => {
+export async function handler(req: Request): Promise<Response> {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { email, type = 'code' }: VerificationRequest = await req.json();
@@ -88,7 +87,7 @@ serve(async (req: Request) => {
     }
 
     // Build email content
-    const appUrl = Deno.env.get("APP_URL") || "https://tikxaz.lovable.app";
+    const appUrl = process.env.APP_URL || "https://tikxaz.lovable.app";
     const verificationLink = `${appUrl}/verify?token=${code}&email=${encodeURIComponent(email)}`;
     
     let emailSubject: string;
@@ -213,4 +212,4 @@ serve(async (req: Request) => {
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
-});
+}

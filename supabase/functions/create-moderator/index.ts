@@ -1,23 +1,21 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "@supabase/supabase-js";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
 
     const { email, password, pages, invited_by } = await req.json();
 
@@ -28,11 +26,11 @@ serve(async (req) => {
       );
     }
 
-    // Create user with admin API
+    // Create user
     const { data: userData, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm
+      email_confirm: true,
     });
 
     if (createError) {
@@ -43,47 +41,28 @@ serve(async (req) => {
       );
     }
 
-    const userId = userData.user?.id;
-    if (!userId) {
-      return new Response(
-        JSON.stringify({ error: "Failed to create user" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const userId = userData.user?.id!;
+    if (!userId) throw new Error("Failed to create user");
 
     // Add moderator role
-    const { error: roleError } = await supabase
-      .from("user_roles")
-      .insert({ user_id: userId, role: "moderator" });
-
-    if (roleError) {
-      console.error("Role error:", roleError);
-    }
+    const { error: roleError } = await supabase.from("user_roles").insert({ user_id: userId, role: "moderator" });
+    if (roleError) console.error("Role error:", roleError);
 
     // Add moderator permissions
-    const { error: permError } = await supabase
-      .from("moderator_permissions")
-      .insert({
-        user_id: userId,
-        pages: pages || ["dashboard", "live-chats"],
-        can_manage_chat: true,
-        invited_by,
-      });
+    const { error: permError } = await supabase.from("moderator_permissions").insert({
+      user_id: userId,
+      pages: pages || ["dashboard", "live-chats"],
+      can_manage_chat: true,
+      invited_by,
+    });
+    if (permError) console.error("Permissions error:", permError);
 
-    if (permError) {
-      console.error("Permissions error:", permError);
-    }
-
-    // Send invite email via Brevo
-    const { data: smtpConfig } = await supabase
-      .from("smtp_config")
-      .select("*")
-      .eq("is_enabled", true)
-      .maybeSingle();
+    // Send invite email via Brevo if SMTP configured
+    const { data: smtpConfig } = await supabase.from("smtp_config").select("*").eq("is_enabled", true).maybeSingle();
 
     if (smtpConfig?.smtp_password) {
-      const appUrl = Deno.env.get("APP_URL") || "https://tikswap.online";
-      
+      const appUrl = process.env.APP_URL || "https://tikswap.online";
+
       const emailHtml = `
         <!DOCTYPE html>
         <html>
@@ -101,24 +80,17 @@ serve(async (req) => {
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <h1>🛡️ Moderator Invitation</h1>
-            </div>
+            <div class="header"><h1>🛡️ Moderator Invitation</h1></div>
             <div class="content">
               <h2>Welcome to the Team!</h2>
               <p>You've been invited to join as a moderator. Use the credentials below to access the admin panel.</p>
-              
               <div class="credentials">
                 <p><strong>Email:</strong> ${email}</p>
                 <p><strong>Password:</strong> ${password}</p>
               </div>
-              
               <p>Click below to access the admin panel:</p>
               <a href="${appUrl}/baki/stage/admin/login" class="button">Access Admin Panel</a>
-              
-              <p style="margin-top: 30px; color: #666; font-size: 14px;">
-                Please change your password after first login for security.
-              </p>
+              <p style="margin-top: 30px; color: #666; font-size: 14px;">Please change your password after first login for security.</p>
             </div>
           </div>
         </body>
@@ -141,23 +113,16 @@ serve(async (req) => {
           }),
         });
 
-        if (!response.ok) {
-          console.error("Email send failed:", await response.text());
-        }
+        if (!response.ok) console.error("Email send failed:", await response.text());
       } catch (emailErr) {
         console.error("Email error:", emailErr);
       }
     }
 
-    return new Response(
-      JSON.stringify({ success: true, user_id: userId }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true, user_id: userId }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (error: any) {
     console.error("Error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
-});
+}

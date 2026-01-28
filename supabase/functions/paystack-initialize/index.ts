@@ -1,20 +1,18 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+export async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const PAYSTACK_SECRET_KEY = Deno.env.get("PAYSTACK_SECRET_KEY");
-    const APP_URL = Deno.env.get("APP_URL") || "https://tikswap.online";
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    
+    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+    const APP_URL = process.env.APP_URL || "https://tikswap.online";
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+
     if (!PAYSTACK_SECRET_KEY) {
       console.error("PAYSTACK_SECRET_KEY not configured");
       return new Response(
@@ -25,8 +23,6 @@ serve(async (req) => {
 
     const { email, amount, points, userId } = await req.json();
 
-    console.log("Initializing payment:", { email, amount, points, userId });
-
     if (!email || !amount || !points || !userId) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
@@ -34,10 +30,8 @@ serve(async (req) => {
       );
     }
 
-    // Use the callback URL for redirect after payment
+    // Construct callback URL
     const callbackUrl = `${SUPABASE_URL}/functions/v1/paystack-verify`;
-
-    console.log("Callback URL:", callbackUrl);
 
     // Initialize Paystack transaction
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
@@ -66,8 +60,6 @@ serve(async (req) => {
 
     const paystackData = await paystackResponse.json();
 
-    console.log("Paystack response:", paystackData);
-
     if (!paystackData.status) {
       console.error("Paystack error:", paystackData);
       return new Response(
@@ -84,11 +76,12 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+
+  } catch (error: any) {
     console.error("Error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: error.message || "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
