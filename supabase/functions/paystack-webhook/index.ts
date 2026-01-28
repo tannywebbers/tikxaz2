@@ -28,7 +28,7 @@ export async function handler(req: Request): Promise<Response> {
   try {
     // Get the raw body for signature verification
     const body = await req.text();
-    const signature = req.headers.get("x-paystack-signature");
+    const signature = req.headers.get("x-paystack-signature")?.trim();
 
     console.log("Received webhook, signature:", signature ? "present" : "missing");
 
@@ -77,7 +77,7 @@ export async function handler(req: Request): Promise<Response> {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Atomic + idempotent crediting by reference
+    // Parse points safely
     const pointsToAdd = parseInt(points);
     if (!Number.isFinite(pointsToAdd) || pointsToAdd <= 0) {
       console.error("Invalid points:", points);
@@ -87,7 +87,8 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const { data: creditResult, error: creditError } = await supabase.rpc(
+    // Atomic + idempotent crediting by reference
+    const { data: creditResult, error: creditError } = await supabase.rpc<{ already_processed: boolean }>(
       "credit_purchase_points",
       {
         _user_id: user_id,
@@ -105,20 +106,19 @@ export async function handler(req: Request): Promise<Response> {
       );
     }
 
-    console.log("credit_purchase_points result:", creditResult);
+    const alreadyProcessed = Boolean(creditResult?.already_processed);
 
-    const alreadyProcessed = Boolean((creditResult as any)?.already_processed);
-
-    console.log("Webhook processed successfully!");
+    console.log("Webhook processed successfully!", { alreadyProcessed });
 
     return new Response(
       JSON.stringify({ received: true, success: true, already_processed: alreadyProcessed }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Webhook error:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
