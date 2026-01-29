@@ -62,6 +62,48 @@ serve(async (req) => {
       );
     }
 
+    // Handle checking if user is admin (for user login page)
+    if (action === "check_user_role") {
+      if (!email || !password) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Email and password are required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Validate credentials
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError || !authData.user) {
+        return new Response(
+          JSON.stringify({ success: false, isAdmin: false, error: "Invalid credentials" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const userId = authData.user.id;
+      
+      // Immediately sign out - we're only checking credentials
+      await supabase.auth.signOut();
+
+      // Check if user has admin/moderator role
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .in("role", ["admin", "moderator"]);
+
+      const isAdmin = roleData && roleData.length > 0;
+
+      return new Response(
+        JSON.stringify({ success: true, isAdmin }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Get IP for rate limiting
     const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
     

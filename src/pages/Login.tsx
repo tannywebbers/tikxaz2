@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Coins, Eye, EyeOff, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
+import { Coins, Eye, EyeOff, Mail, Lock, ArrowRight, Loader2, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -20,12 +21,14 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
+  const [adminError, setAdminError] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
+    setAdminError(false);
 
     const result = loginSchema.safeParse({ email, password });
     if (!result.success) {
@@ -39,11 +42,60 @@ export default function Login() {
     }
 
     setIsLoading(true);
-    const { error } = await signIn(email, password);
-    setIsLoading(false);
 
-    if (!error) {
+    try {
+      // First, check if user exists and is an admin WITHOUT creating a session
+      // We'll use the admin-login edge function to validate credentials and check role
+      const { data: checkData, error: checkError } = await supabase.functions.invoke("admin-login", {
+        body: { 
+          email, 
+          password,
+          action: "check_user_role" // Special action to just check if user is admin
+        },
+      });
+
+      if (checkError) {
+        throw new Error("Failed to verify credentials");
+      }
+
+      // If user is an admin, block login and show alert
+      if (checkData?.isAdmin) {
+        setIsLoading(false);
+        setAdminError(true);
+        return;
+      }
+
+      // Not an admin - proceed with normal login
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (signInError) {
+        toast({
+          variant: "destructive",
+          title: "Sign in failed",
+          description: signInError.message,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      toast({
+        title: "Welcome back!",
+        description: "You have successfully signed in.",
+      });
+
+      setIsLoading(false);
       navigate("/dashboard");
+    } catch (err) {
+      console.error("Login error:", err);
+      toast({
+        variant: "destructive",
+        title: "Sign in failed",
+        description: "An error occurred. Please try again.",
+      });
+      setIsLoading(false);
     }
   };
 
@@ -78,67 +130,101 @@ export default function Login() {
             <CardDescription>Sign in to your account to continue</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="Enter your email"
-                    className="pl-10"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+            {adminError ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <div className="flex items-start gap-3">
+                    <ShieldAlert className="w-6 h-6 text-destructive shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-destructive mb-1">Admin Account Detected</h3>
+                      <p className="text-sm text-muted-foreground">
+                        This account has administrative privileges. Please use the admin panel to log in securely.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  onClick={() => navigate("/baki/stage/admin/login")}
+                >
+                  Go to Admin Login
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  className="w-full" 
+                  onClick={() => {
+                    setAdminError(false);
+                    setEmail("");
+                    setPassword("");
+                  }}
+                >
+                  Use Different Account
+                </Button>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input 
-                    id="password" 
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    className="pl-10 pr-10"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      placeholder="Enter your email"
+                      className="pl-10"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                  {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
                 </div>
-                {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
-              </div>
 
-              <Button variant="gradient" className="w-full" size="lg" type="submit" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                    Signing in...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight className="w-5 h-5" />
-                  </>
-                )}
-              </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input 
+                      id="password" 
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter your password"
+                      className="pl-10 pr-10"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                </div>
 
-              <p className="text-center text-sm text-muted-foreground">
-                Don't have an account?{" "}
-                <Link to="/register" className="text-primary hover:underline font-medium">
-                  Sign up
-                </Link>
-              </p>
-            </form>
+                <Button variant="gradient" className="w-full" size="lg" type="submit" disabled={isLoading}>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      Sign In
+                      <ArrowRight className="w-5 h-5" />
+                    </>
+                  )}
+                </Button>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  Don't have an account?{" "}
+                  <Link to="/register" className="text-primary hover:underline font-medium">
+                    Sign up
+                  </Link>
+                </p>
+              </form>
+            )}
           </CardContent>
         </Card>
       </motion.div>
