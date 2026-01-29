@@ -73,7 +73,20 @@ export default function AdminDashboard() {
 
       const { data: adsData } = await supabase.from("ads").select("id, task_type, points_per_task");
       const { data: profilesData } = await supabase.from("profiles").select("user_id, tiktok_username, tiktok_name, email");
-      const { data: usersData } = await supabase.from("profiles").select("id");
+      
+      // Get all profiles
+      const { data: allProfiles } = await supabase.from("profiles").select("id, user_id");
+      
+      // Get admin and moderator user IDs to exclude from count
+      const { data: adminRoles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .in("role", ["admin", "moderator"]);
+      
+      const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
+      
+      // Filter out admins and moderators from total user count
+      const regularUsers = (allProfiles || []).filter(p => !adminUserIds.has(p.user_id));
 
       const enrichedSubmissions = (submissionsData || []).map(sub => ({
         ...sub,
@@ -88,7 +101,7 @@ export default function AdminDashboard() {
 
       setSubmissions(enrichedSubmissions as Submission[]);
       setStats({
-        totalUsers: usersData?.length || 0,
+        totalUsers: regularUsers.length,
         pendingReviews: pending,
         totalPointsIssued: totalPoints,
         approvalRate: total > 0 ? (approved / total) * 100 : 0,

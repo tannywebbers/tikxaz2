@@ -27,9 +27,9 @@ export function ProtectedRoute({ children, requireAdmin = false, blockAdmins = f
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Block admins from accessing user panel - they must use admin panel
+  // Block admins from accessing user panel - redirect to admin login for proper 2FA flow
   if (blockAdmins && isAdmin) {
-    return <Navigate to="/baki/stage/admin" replace />;
+    return <Navigate to="/baki/stage/admin/login" replace />;
   }
 
   if (requireAdmin && !isAdmin) {
