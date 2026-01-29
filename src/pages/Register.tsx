@@ -530,9 +530,9 @@ export default function Register() {
                   />
                   <label htmlFor="terms" className="text-sm text-muted-foreground">
                     I agree to the{" "}
-                    <Link to="/terms-of-service" className="text-primary hover:underline">Terms of Service</Link>
+                    <Link to="/terms" className="text-primary hover:underline">Terms of Service</Link>
                     {" "}and{" "}
-                    <Link to="/privacy-policy" className="text-primary hover:underline">Privacy Policy</Link>
+                    <Link to="/privacy" className="text-primary hover:underline">Privacy Policy</Link>
                   </label>
                 </div>
                 {errors.terms && <p className="text-sm text-destructive">{errors.terms}</p>}
