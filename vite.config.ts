@@ -7,9 +7,10 @@ import { VitePWA } from "vite-plugin-pwa";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: ":https://tikxaz2.onrender.com/:",
-    port: 8080,
-  },
+  host: true,
+  port: 8080,
+  allowedHosts: ["tikxaz2.onrender.com"],
+},
   plugins: [
     react(), 
     mode === "development" && componentTagger(),
