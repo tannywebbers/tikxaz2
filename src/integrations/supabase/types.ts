@@ -718,7 +718,7 @@ export type Database = {
           referred_by?: string | null
           tik_points?: number
           tiktok_name?: string | null
-          tiktok_username: string
+          tiktok_username?: string
           updated_at?: string
           user_id: string
         }
