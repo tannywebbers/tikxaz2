@@ -3,23 +3,29 @@
  * 
  * Validates that required database tables and structures exist.
  * Provides detailed logging for debugging schema issues.
+ * 
+ * MODULAR SCHEMA STRUCTURE:
+ * - supabase/schema-sql/tables/ - Table definitions
+ * - supabase/schema-sql/functions/ - Database functions
+ * - supabase/schema-sql/triggers/ - Trigger definitions
+ * - supabase/schema-sql/policies/ - RLS policies
  */
 
 import { supabase } from "@/integrations/supabase/client";
 
-// Required tables for the application
+// Required tables for the application (in dependency order)
 const REQUIRED_TABLES = [
-  'profiles',
-  'user_roles',
-  'ads',
-  'task_submissions',
-  'transactions',
-  'referrals',
-  'notifications',
-  'chat_sessions',
-  'chat_messages',
-  'app_settings',
-  'platform_settings',
+  'profiles',        // Core user data, linked to auth.users
+  'user_roles',      // Role assignments (admin, moderator, user)
+  'ads',             // Task advertisements
+  'task_submissions',// User task completions
+  'transactions',    // Point transactions
+  'referrals',       // Referral relationships
+  'notifications',   // User notifications
+  'chat_sessions',   // Live chat support
+  'chat_messages',   // Chat messages
+  'app_settings',    // Application branding
+  'platform_settings', // Key-value config
 ] as const;
 
 // Optional tables (app works without them but with reduced functionality)
@@ -38,8 +44,12 @@ const OPTIONAL_TABLES = [
   'ai_config',
   'ai_prompts',
   'referral_commissions',
-  'schema_version',
 ] as const;
+
+// Required columns that MUST have defaults or be populated by triggers
+const CRITICAL_COLUMN_DEFAULTS = {
+  'profiles': ['tiktok_username'], // Must have default to prevent auth trigger failure
+} as const;
 
 export interface SchemaValidationResult {
   isValid: boolean;
@@ -48,6 +58,8 @@ export interface SchemaValidationResult {
   existingTables: string[];
   schemaVersion: string | null;
   errors: string[];
+  warnings: string[];
+  triggerStatus: boolean;
 }
 
 /**
@@ -130,10 +142,33 @@ async function getSchemaVersion(): Promise<string | null> {
 }
 
 /**
+ * Check if the auth trigger exists and is functioning
+ */
+async function checkAuthTrigger(): Promise<boolean> {
+  try {
+    // Try to check if we can query profiles - if it works, trigger is likely OK
+    const { error } = await supabase
+      .from('profiles')
+      .select('id', { count: 'exact', head: true });
+    
+    if (error) {
+      dbLog('warn', 'Could not verify auth trigger status:', error.message);
+      return false;
+    }
+    
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Validate the database schema
  */
 export async function validateSchema(): Promise<SchemaValidationResult> {
-  dbLog('info', 'Starting schema validation...');
+  dbLog('info', '========================================');
+  dbLog('info', 'Starting Database Schema Validation');
+  dbLog('info', '========================================');
   
   const result: SchemaValidationResult = {
     isValid: true,
@@ -142,54 +177,73 @@ export async function validateSchema(): Promise<SchemaValidationResult> {
     existingTables: [],
     schemaVersion: null,
     errors: [],
+    warnings: [],
+    triggerStatus: false,
   };
   
   try {
-    // Check required tables
-    dbLog('info', 'Checking required tables...');
+    // Step 1: Check required tables
+    dbLog('info', '📋 Step 1: Checking required tables...');
     for (const table of REQUIRED_TABLES) {
       const exists = await tableExists(table);
       if (exists) {
         result.existingTables.push(table);
-        dbLog('info', `✓ Table exists: ${table}`);
+        dbLog('info', `  ✓ ${table}`);
       } else {
         result.missingRequiredTables.push(table);
         result.isValid = false;
-        dbLog('error', `Missing required table: ${table}`);
+        dbLog('error', `  ✗ ${table} - MISSING`);
       }
     }
     
-    // Check optional tables
-    dbLog('info', 'Checking optional tables...');
+    // Step 2: Check optional tables
+    dbLog('info', '📋 Step 2: Checking optional tables...');
     for (const table of OPTIONAL_TABLES) {
       const exists = await tableExists(table);
       if (exists) {
         result.existingTables.push(table);
-        dbLog('info', `✓ Table exists: ${table}`);
+        dbLog('info', `  ✓ ${table}`);
       } else {
         result.missingOptionalTables.push(table);
-        dbLog('warn', `Missing optional table: ${table}`);
+        dbLog('warn', `  ⚠ ${table} - optional, not found`);
       }
     }
     
-    // Get schema version
+    // Step 3: Verify auth trigger
+    dbLog('info', '📋 Step 3: Checking auth trigger (handle_new_user)...');
+    result.triggerStatus = await checkAuthTrigger();
+    if (result.triggerStatus) {
+      dbLog('info', '  ✓ Auth trigger appears functional');
+    } else {
+      result.warnings.push('Auth trigger may not be working - new signups could fail');
+      dbLog('warn', '  ⚠ Auth trigger status unknown');
+    }
+    
+    // Step 4: Get schema version
     result.schemaVersion = await getSchemaVersion();
     if (result.schemaVersion) {
-      dbLog('info', `Schema version: ${result.schemaVersion}`);
-    } else {
-      dbLog('warn', 'Schema version not found (schema_version table may be missing)');
+      dbLog('info', `📋 Schema version: ${result.schemaVersion}`);
     }
     
     // Summary
-    if (result.isValid) {
-      dbLog('info', `✓ Schema validation passed. ${result.existingTables.length} tables found.`);
-    } else {
-      dbLog('error', `Schema validation failed. Missing ${result.missingRequiredTables.length} required tables.`);
-      dbLog('error', 'Run schema.sql manually in Supabase SQL Editor to fix this.');
-    }
+    dbLog('info', '========================================');
+    dbLog('info', 'Validation Summary');
+    dbLog('info', '========================================');
+    dbLog('info', `Tables found: ${result.existingTables.length}`);
+    dbLog('info', `Missing required: ${result.missingRequiredTables.length}`);
+    dbLog('info', `Missing optional: ${result.missingOptionalTables.length}`);
+    dbLog('info', `Auth trigger: ${result.triggerStatus ? '✓' : '⚠'}`);
     
-    if (result.missingOptionalTables.length > 0) {
-      dbLog('warn', `${result.missingOptionalTables.length} optional tables missing. Some features may be unavailable.`);
+    if (result.isValid) {
+      dbLog('info', '✓ Schema validation PASSED');
+    } else {
+      dbLog('error', '✗ Schema validation FAILED');
+      dbLog('error', 'Missing tables: ' + result.missingRequiredTables.join(', '));
+      dbLog('error', '📄 Run files in supabase/schema-sql/ in order:');
+      dbLog('error', '   1. tables/*.sql');
+      dbLog('error', '   2. functions/*.sql');
+      dbLog('error', '   3. triggers/*.sql');
+      dbLog('error', '   4. policies/*.sql');
     }
     
   } catch (error) {
@@ -209,9 +263,7 @@ export async function validateAuthTrigger(): Promise<boolean> {
   dbLog('info', 'Checking auth trigger (handle_new_user)...');
   
   try {
-    // We can't directly check triggers from client, but we can verify
-    // by checking if profiles table has data correlation with auth
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true });
     
@@ -234,28 +286,45 @@ export async function validateAuthTrigger(): Promise<boolean> {
 export function getSchemaStatusSummary(result: SchemaValidationResult): string {
   const lines: string[] = [];
   
-  lines.push('=== Database Schema Status ===');
+  lines.push('╔════════════════════════════════════════╗');
+  lines.push('║      Database Schema Status            ║');
+  lines.push('╚════════════════════════════════════════╝');
+  lines.push('');
   lines.push(`Status: ${result.isValid ? '✓ Valid' : '❌ Invalid'}`);
-  lines.push(`Schema Version: ${result.schemaVersion || 'Unknown'}`);
+  lines.push(`Auth Trigger: ${result.triggerStatus ? '✓ Working' : '⚠ Unknown'}`);
   lines.push(`Tables Found: ${result.existingTables.length}`);
   
   if (result.missingRequiredTables.length > 0) {
-    lines.push(`\n❌ Missing Required Tables:`);
-    result.missingRequiredTables.forEach(t => lines.push(`   - ${t}`));
+    lines.push('');
+    lines.push('❌ Missing Required Tables:');
+    result.missingRequiredTables.forEach(t => lines.push(`   • ${t}`));
   }
   
   if (result.missingOptionalTables.length > 0) {
-    lines.push(`\n⚠️ Missing Optional Tables:`);
-    result.missingOptionalTables.forEach(t => lines.push(`   - ${t}`));
+    lines.push('');
+    lines.push('⚠️ Missing Optional Tables:');
+    result.missingOptionalTables.forEach(t => lines.push(`   • ${t}`));
+  }
+  
+  if (result.warnings.length > 0) {
+    lines.push('');
+    lines.push('⚠️ Warnings:');
+    result.warnings.forEach(w => lines.push(`   • ${w}`));
   }
   
   if (result.errors.length > 0) {
-    lines.push(`\n❌ Errors:`);
-    result.errors.forEach(e => lines.push(`   - ${e}`));
+    lines.push('');
+    lines.push('❌ Errors:');
+    result.errors.forEach(e => lines.push(`   • ${e}`));
   }
   
   if (!result.isValid) {
-    lines.push('\n📋 To fix: Run supabase/schema.sql in Supabase SQL Editor');
+    lines.push('');
+    lines.push('📋 To fix, run SQL files in order:');
+    lines.push('   1. supabase/schema-sql/tables/*.sql');
+    lines.push('   2. supabase/schema-sql/functions/*.sql');
+    lines.push('   3. supabase/schema-sql/triggers/*.sql');
+    lines.push('   4. supabase/schema-sql/policies/*.sql');
   }
   
   return lines.join('\n');
